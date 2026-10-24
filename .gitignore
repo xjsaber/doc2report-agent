@@ -12,5 +12,8 @@ data/index/
 milvus*.db
 outputs/
 *.docx
-!templates/**/*.docx
 .DS_Store
+
+*.egg-info/
+build/
+dist/
