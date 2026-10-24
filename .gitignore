@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+data/samples/
+data/index/
+*.pdf
+*.db
+milvus*.db
+outputs/
+*.docx
+!templates/**/*.docx
+.DS_Store
