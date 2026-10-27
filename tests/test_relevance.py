@@ -59,3 +59,40 @@ def test_filter_drops_when_both_gates_fail():
     hits = [_hit("完全不搭界的文本内容")]
     kept = filter_relevant_hits("查询轴天体物理", hits, embedder=embed, min_vector_score=0.35)
     assert kept == []
+
+def test_stopwords_block_boilerplate_overlap():
+    from core.index.relevance import has_bm25_overlap, build_stopwords
+
+    corpus = [
+        "本公司年度报告披露公司基本情况与治理结构。",
+        "本公司年度报告说明公司董事会运作情况。",
+        "本公司年度报告列示公司股东大会决议。",
+    ]
+    stops = build_stopwords(corpus)
+    assert "公司" in stops
+    assert "年度" in stops or "报告" in stops
+    # Query only shares boilerplate stopwords with a hit → no meaningful overlap.
+    assert has_bm25_overlap("公司年度报告里火星移民计划进展", corpus[0], stopwords=stops) is False
+
+
+def test_filter_reuses_hit_vectors_without_reembedding_docs():
+    calls = {"n": 0}
+
+    def embed(texts):
+        calls["n"] += 1
+        # Only the query should be embedded when hit_vectors are supplied.
+        assert len(texts) == 1
+        return np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+    hits = [_hit("完全不搭界的文本内容", "1"), _hit("另一段无关文字", "2")]
+    stored = [np.asarray([0.0, 1.0], dtype=np.float32), np.asarray([0.0, 1.0], dtype=np.float32)]
+    kept = filter_relevant_hits(
+        "查询轴专用短语",
+        hits,
+        embedder=embed,
+        min_vector_score=0.99,
+        hit_vectors=stored,
+    )
+    assert kept == []
+    assert calls["n"] == 1
+

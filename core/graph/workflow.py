@@ -175,8 +175,12 @@ def build_report_graph(
         sections = [dict(s) for s in (state.get("sections") or [])]
         errors = list(state.get("errors") or [])
         for section in sections:
-            started = perf_counter()
             needs = bool(section.get("needs_verification"))
+            has_md = bool((section.get("markdown") or "").strip())
+            # First pass writes every section; rewrite pass only touches flagged ones.
+            if has_md and not needs:
+                continue
+            started = perf_counter()
             notes = list(section.get("verification_notes") or [])
             if not section.get("chunks"):
                 section["markdown"] = f"## {section['name']}\n\n（本章暂无检索依据）\n"

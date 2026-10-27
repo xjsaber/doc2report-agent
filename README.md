@@ -8,6 +8,8 @@ An open-source project for source-backed reports and standalone RAG Q&A over pub
 
 ## 当前范围
 
+第 5 轮任务 1（[graph-fix]）已完成：重写仅针对 needs_verification 章节；BM25 去停用词；relevance 复用存量向量。本地测试 **111 passed / 13 skipped**（Milvus 11 + export_report 2）。
+
 第 2 轮已完成脚手架评审小改、`core/parse` 的 PDF 解析与切块，以及 `parse_document` 工具。第 3 轮任务 1 增加切块前页眉页脚去噪和 memory / milvus Retriever 骨架与契约测试。
 默认使用 PyMuPDF，保留从 1 开始的物理页码，抽取文字、标题和表格；MinerU 可选，未安装、接口不兼容或执行失败时记录 warning 并回退。
 第 3 轮已完成去噪、双 Retriever、混合召回、search_chunks 与独立 RAG 问答页。第 4 轮任务 1 已修拒答/引用校验阻断项；任务 2 已实现 LangGraph（plan→retrieve→write→verify→assemble）与年报分析模板。真实模型与 RTX 3050 推理尚未实测；任务 3 已实现 get_table、calc_financials 与 `python -m core.graph.run`；export_report、MCP、Word 导出留待后续。Milvus 适配代码已提供，原生 Windows 未实机运行。

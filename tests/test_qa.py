@@ -146,3 +146,27 @@ def test_all_irrelevant_skips_model():
     assert result.answer is None
     assert "依据" in (result.message or "")
     assert fake.calls == []
+
+def test_refuse_question_absent_from_report():
+    """Boilerplate tokens like 公司/年度/报告 must not keep irrelevant hits alive."""
+    embedder = _orthogonal_embedder("火星移民ZXQ")
+    retriever = get_retriever("memory", embedder=embedder)
+    retriever.index_chunks(
+        [
+            _chunk(1, "本公司年度报告披露公司董事会与治理结构相关情况。"),
+            _chunk(2, "本公司年度报告说明公司股东大会召开情况。", page=3),
+            _chunk(3, "本公司年度报告列示公司董事简历与任职情况。", page=4),
+        ]
+    )
+    fake = FakeChatModel("不应被调用")
+    result = answer_question(
+        "火星移民ZXQ计划的预算是多少",
+        retriever=retriever,
+        chat_model=fake,
+        min_vector_score=0.35,
+    )
+    assert result.refused is True
+    assert result.answer is None
+    assert "依据" in (result.message or "")
+    assert fake.calls == []
+

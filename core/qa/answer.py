@@ -166,11 +166,17 @@ def answer_question(
     bound = embedder
     if bound is None and hasattr(retriever, "embedder"):
         bound = getattr(retriever, "embedder")
+    # Reuse indexed vectors when the Retriever exposes them (avoids re-encoding hits).
+    stored = None
+    getter = getattr(retriever, "get_stored_vectors", None)
+    if callable(getter) and raw_hits:
+        stored = getter([hit.chunk_id for hit in raw_hits])
     hits = filter_relevant_hits(
         query,
         raw_hits,
         embedder=bound,
         min_vector_score=min_vector_score,
+        hit_vectors=stored,
     )
     citations = _citations_from_hits(hits)
     if not citations:

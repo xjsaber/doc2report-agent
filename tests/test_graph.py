@@ -168,3 +168,43 @@ def test_graph_still_pending_after_rewrite():
     assert int(finance.get("rewrite_count") or 0) == 1
     assert finance.get("verification_status") in {"mismatch", "not_found"}
     assert "【待核实】" in finance.get("markdown", "")
+
+def test_graph_rewrite_only_failed_section_six_calls():
+    """5 chapters first pass + 1 rewrite of the failing chapter = 6 model calls."""
+    retriever = get_retriever("memory")
+    _index_sample(retriever)
+    finance_writes = {"n": 0}
+    preserved = {"overview": None}
+
+    def factory(messages, index):
+        user_blobs = "\n".join(m.content for m in messages)
+        if "章节：财务表现" in user_blobs:
+            finance_writes["n"] += 1
+            if finance_writes["n"] <= 1:
+                return "营业收入为 999.9 亿元。[synthetic.pdf p4]"
+            return "营业收入为 120.5 亿元。[synthetic.pdf p4]"
+        if "章节：公司概况" in user_blobs:
+            text = _section_reply("公司概况", 2, with_number=None)
+            preserved["overview"] = text
+            return text
+        mapping = {
+            "章节：主营业务": ("主营业务", 3),
+            "章节：风险因素": ("风险因素", 5),
+            "章节：结论": ("结论", 6),
+        }
+        for key, (name, page) in mapping.items():
+            if key in user_blobs:
+                return _section_reply(name, page, with_number=None)
+        return _section_reply("结论", 6, with_number=None)
+
+    fake = FakeChatModel(reply_factory=factory)
+    state = run_report(retriever=retriever, chat_model=fake, doc_ids=["doc-a"], top_k=4)
+    assert len(fake.calls) == 6
+    assert finance_writes["n"] == 2
+    overview = next(s for s in state["sections"] if s["name"] == "公司概况")
+    assert preserved["overview"] is not None
+    assert preserved["overview"] in overview.get("markdown", "")
+    finance = next(s for s in state["sections"] if s["name"] == "财务表现")
+    assert int(finance.get("rewrite_count") or 0) == 1
+    assert "120.5" in finance.get("markdown", "")
+

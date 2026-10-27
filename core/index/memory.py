@@ -43,6 +43,10 @@ class MemoryRetriever:
         self._chunks.update((chunk.chunk_id, chunk) for chunk in chunks)
         self._vectors.update((chunk.chunk_id, vector) for chunk, vector in zip(chunks, vectors))
 
+    def get_stored_vectors(self, chunk_ids: Sequence[str]) -> list[np.ndarray | None]:
+        """Return L2-normalized vectors already stored for chunk_ids (None if missing)."""
+        return [self._vectors.get(chunk_id) for chunk_id in chunk_ids]
+
     def _vector_scores(self, query: np.ndarray, chunks: Sequence[Chunk]) -> np.ndarray:
         return np.asarray([self._vectors[chunk.chunk_id] @ query for chunk in chunks])
 
