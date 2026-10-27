@@ -7,6 +7,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def memory_default(monkeypatch):
     monkeypatch.setenv("RETRIEVER", "memory")
+    monkeypatch.setenv("EMBEDDING_BACKEND", "fake")
 
 
 @pytest.fixture

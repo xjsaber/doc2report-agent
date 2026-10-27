@@ -1,4 +1,4 @@
-"""Milvus Lite vectors with shared temporary BM25/hybrid ranking.
+"""Milvus Lite vectors with shared jieba BM25/RRF ranking.
 
 Collections are session-scoped: re-index source chunks after opening a retriever.
 """
@@ -11,12 +11,12 @@ from uuid import uuid4
 
 import numpy as np
 
-from core.index.memory import Embedder, MemoryRetriever, hash_embeddings
+from core.index.memory import Embedder, MemoryRetriever
 from core.models import Chunk
 
 
 class MilvusRetriever(MemoryRetriever):
-    def __init__(self, *, embedder: Embedder = hash_embeddings,
+    def __init__(self, *, embedder: Embedder | None = None,
                  uri: str = "data/index/milvus.db") -> None:
         if sys.platform == "win32":
             raise RuntimeError("Milvus Lite cannot run on native Windows; set RETRIEVER=memory "

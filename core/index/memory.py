@@ -1,34 +1,19 @@
-"""Small in-memory retrieval scaffold. No model downloads or network calls."""
+"""In-memory cosine/BM25 retrieval with reciprocal rank fusion."""
 
-from collections.abc import Callable, Sequence
-from hashlib import sha256
-import re
+from collections.abc import Sequence
 
 import numpy as np
 from rank_bm25 import BM25Okapi
 
 from core.models import Chunk, SearchHit, SearchMode
+from core.index.embeddings import EmbeddingProvider, get_embedding_provider, hash_embeddings, tokenize
 
-Embedder = Callable[[Sequence[str]], np.ndarray]
-
-
-def tokenize(text: str) -> list[str]:
-    """Temporary Latin words / individual Han characters; jieba comes later."""
-    return re.findall(r"[a-z0-9_]+|[\u3400-\u9fff]", text.lower())
-
-
-def hash_embeddings(texts: Sequence[str]) -> np.ndarray:
-    """Deterministic test/demo placeholder, NOT semantic embeddings."""
-    vectors = np.zeros((len(texts), 64), dtype=np.float32)
-    for row, text in enumerate(texts):
-        for token in tokenize(text):
-            vectors[row, int.from_bytes(sha256(token.encode()).digest()[:4], "big") % 64] += 1
-    return vectors
+Embedder = EmbeddingProvider
 
 
 class MemoryRetriever:
-    def __init__(self, *, embedder: Embedder = hash_embeddings) -> None:
-        self.embedder = embedder
+    def __init__(self, *, embedder: Embedder | None = None) -> None:
+        self.embedder = embedder if embedder is not None else get_embedding_provider()
         self._chunks: dict[str, Chunk] = {}
         self._vectors: dict[str, np.ndarray] = {}
         self._dimension: int | None = None
@@ -81,7 +66,11 @@ class MemoryRetriever:
         elif mode == "bm25":
             scores = bm25
         else:
-            # Temporary score sum only. RRF and production ranking belong to task 2.
-            scores = vector + bm25 / max(1.0, float(np.max(np.abs(bm25))))
+            # Fuse full filtered rankings, then truncate. Ranks start at one.
+            scores = np.zeros(len(chunks))
+            for branch in (vector, bm25):
+                ranked = sorted(range(len(chunks)), key=lambda i: (-float(branch[i]), chunks[i].chunk_id))
+                for rank, i in enumerate(ranked, start=1):
+                    scores[i] += 1.0 / (60 + rank)
         order = sorted(range(len(chunks)), key=lambda i: (-float(scores[i]), chunks[i].chunk_id))[:top_k]
         return [SearchHit(**chunks[i].model_dump(), score=float(scores[i])) for i in order]

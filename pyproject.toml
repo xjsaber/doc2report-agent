@@ -9,10 +9,11 @@ description = "Public annual reports to source-backed reports"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-dependencies = ["pydantic>=2.7,<3", "PyMuPDF>=1.24,<2", "numpy>=1.26,<3", "rank-bm25>=0.2.2,<0.3"]
+dependencies = ["pydantic>=2.7,<3", "PyMuPDF>=1.24,<2", "numpy>=1.26,<3", "rank-bm25>=0.2.2,<0.3", "jieba>=0.42.1,<0.43"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9"]
+embedding = ["sentence-transformers>=3,<6"]
 milvus = ["pymilvus>=2.5,<2.7", "milvus-lite>=2.5,<2.6; sys_platform != 'win32'"]
 
 [tool.setuptools.packages.find]

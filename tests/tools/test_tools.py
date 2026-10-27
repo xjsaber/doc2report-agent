@@ -49,7 +49,7 @@ def test_parse_document_mineru_fallback(sample_pdf, monkeypatch):
 
 
 @pytest.mark.parametrize("tool", [
-    "search_chunks", "get_table", "calc_financials",
+    "get_table", "calc_financials",
     "verify_claim", "render_section", "export_report", "list_templates", "load_template",
 ])
 @pytest.mark.parametrize("case", ["success", "error"])

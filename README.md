@@ -10,7 +10,7 @@ An open-source project for source-backed reports and standalone RAG Q&A over pub
 
 第 2 轮已完成脚手架评审小改、`core/parse` 的 PDF 解析与切块，以及 `parse_document` 工具。第 3 轮任务 1 增加切块前页眉页脚去噪和 memory / milvus Retriever 骨架与契约测试。
 默认使用 PyMuPDF，保留从 1 开始的物理页码，抽取文字、标题和表格；MinerU 可选，未安装、接口不兼容或执行失败时记录 warning 并回退。
-其余业务入口仍为占位；未接入真实模型、search_chunks、LangGraph 运行时、Streamlit、MCP 或文件导出，完整 Demo 尚未实现。Milvus 适配代码已提供，本轮 Windows 未实机运行。
+第 3 轮任务 2 已完成 jieba BM25、向量/RRF 混合召回、可配置本地 embedding 适配及 search_chunks。真实模型尚未实测；LangGraph 运行时、Streamlit、MCP 和文件导出仍为占位，完整 Demo 尚未实现。Milvus 适配代码已提供，本轮 Windows 未实机运行。任务 3 未实施。
 约束以 [AGENTS.md](AGENTS.md) 为准，另见 [功能要求](docs/CODEX_PROMPT.md)、[工具规范](docs/TOOLS_SPEC.md)、[路线图](docs/ROADMAP.md)。
 
 ## 架构（规划）
@@ -61,7 +61,7 @@ flowchart TD
 | 模块/操作 | 输入要点 | 输出要点 |
 | --- | --- | --- |
 | parse_document（已实现） | file_path、engine | doc_id、pages、sections、tables；新增 chunks、实际 engine |
-| search_chunks | query、doc_ids、top_k、mode；注入 Retriever | chunks，含文本/评分/出处 |
+| search_chunks（已实现） | query、doc_ids、top_k、mode；注入 Retriever | chunks，含 doc_id/章节/文本/评分/出处 |
 | get_table | doc_id、table_id 或 keyword | headers、rows、page、raw_text 回退 |
 | calc_financials | 各财务原值的 current/previous、来源 | Decimal 指标值、公式、输入值及来源 |
 | verify_claim | claim、source_chunk_ids | supported/not_found/mismatch、证据、差异 |
@@ -106,19 +106,27 @@ else:
 `chunk_document` 在分组前自动去噪，不修改传入的解析原文。PyMuPDF 提供页面顶部/底部各 10% 高度内的候选行；无坐标时，以至少有 3 行的页面首尾非空行作为候选。同一规范化行在全部页面的 ≥30% 且至少 2 个不同页面出现时，剔除首尾连续匹配行，正文内部同名行保留。纯数字和“第 N 页”等独立页码统一匹配；不替换正文中的数字。空白页计入比例分母，单页不去重。
 **低置信/待人工抽查**：10% 边缘范围、无坐标首尾行与页码归一化都是启发式，可能误删反复出现的边缘正文，或漏掉混合文本页码；尚未用真实公开年报验证。
 
-## Retriever（第 3 轮任务 1）
+## Retriever 与 search_chunks（第 3 轮任务 2）
 
 ```python
 from core.index import get_retriever
+from core.tools.search_chunks import SearchChunksInput, search_chunks
 
+# 先安装 embedding extra 并准备本地模型；纯流程测试可设 EMBEDDING_BACKEND=fake
 retriever = get_retriever("memory")
 retriever.index_chunks(chunks)
 hits = retriever.search("营业收入", doc_ids=None, top_k=8, mode="hybrid")
+result = search_chunks(SearchChunksInput(query="营业收入"), retriever=retriever)
+print(result.model_dump())
 ```
 
 - 选择优先级：显式参数 > 环境变量 `RETRIEVER` > 平台默认。原生 Windows 默认 `memory`；Linux/macOS/WSL 默认 `milvus`。不会自动读取 `.env`；测试通过 fixture 强制环境默认 `memory`，参数化用例显式选择后端。
 - `memory` 使用 numpy 余弦和 rank-bm25；本轮仅内存存储，未做可选 pickle。`index_chunks` 按 chunk_id 更新，空输入不清空；`doc_ids=[]` 不匹配任何文档。空查询返回空列表，非法 mode 或 top_k < 1 抛 ValueError。
-- 三种 mode 均可调用。默认 hash 向量仅是可运行骨架，不提供语义理解；可通过 `embedder=` 注入批量向量函数。BM25 暂按英文词/单个汉字分词；hybrid 暂用余弦与缩放 BM25 分数相加，**未实现 RRF、真实 embedding、jieba 或 search_chunks 接通**。
+- 两后端均支持 vector（余弦）、bm25（jieba + rank-bm25）和 hybrid。RRF 分数为两路 `1/(60+rank)` 之和，排名从 1 开始；先过滤文档，对全部候选分别排名、融合，再取 top_k。同分按 chunk_id 排序，零分候选也参与排名；分数不是置信度。当前面向小规模会话，BM25 每次查询重建。
+- 默认 `EMBEDDING_BACKEND=local`、`EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5`。安装 `python -m pip install -e ".[embedding]"`；首次使用前独立运行 `python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-zh-v1.5')"` 准备公开模型，或把 EMBEDDING_MODEL 设为已有本地模型目录。运行时 `local_files_only=True`，模型缺失时失败，不隐式联网下载。
+- 设备自动选择：torch 检测 CUDA 可用则 `cuda`，否则 `cpu`；`EMBED_DEVICE=cpu` / `cuda` / `cuda:0` 可覆盖。不会吞掉设备错误或回退假向量。使用 [SentenceTransformer 官方 API](https://www.sbert.net/docs/package_reference/sentence_transformer/model.html)，本轮仅以替身验证设备分支。
+- 测试 fixture 强制 `EMBEDDING_BACKEND=fake`；也可通过 `embedder=` 注入 `EmbeddingProvider` 批量 callable。假向量使用稳定 hash，只用于测试，不代表语义检索质量。默认依赖无需 torch/sentence-transformers；本轮支持 fake/local，未实现 openai embedding 后端。
+- search_chunks 仅依赖 Retriever，返回 ok/data/error/sources；命中保留 doc_id、file、page/page_end、section、chunk_id、score、text。异常转换为失败结果；日志记录查询长度、文档数量、mode、top_k、耗时和 ok，不记录完整查询。输入模型校验错误在调用前由 Pydantic 抛出。
 - `milvus` 在支持平台执行 `python -m pip install -e ".[dev,milvus]"`，再设置 `RETRIEVER=milvus`；原生 Windows 显式选择时抛 RuntimeError，提示改用 memory 或在 Docker 内运行应用。无需在本机安装 extra。
 - Milvus 默认文件为已忽略的 `data/index/milvus.db`，每个实例使用独立临时 collection，需重新索引；结束时调用实例 `close()` 删除该 collection 并关闭连接。BM25 元数据仅在内存，不支持重启恢复，意外退出可能留下 collection。本轮没有持久化恢复或大规模性能承诺。
 - Milvus 使用官方 [create_collection](https://milvus.io/api-reference/pymilvus/v3.0.x/MilvusClient/Collections/create_collection.md)、[upsert](https://milvus.io/docs/upsert-entities.md) 与 [search](https://milvus.io/api-reference/pymilvus/v2.6.x/MilvusClient/Vector/search.md) 接口；本机仅验证 Windows 错误提示，真实客户端调用待支持平台跑同组契约测试。
@@ -129,11 +137,23 @@ PyMuPDF 文字和表格抽取接口见 [官方 Page 文档](https://pymupdf.read
 ## 配置与模板
 
 `.env.example` 预留 `BASE_URL`、`API_KEY`、`MODEL=deepseek-flash`、`RETRIEVER=milvus`、解析器及 embedding 配置。
-本地 embedding 回退约定为 `BAAI/bge-small-zh-v1.5`，本轮不加载模型。
+本地 embedding 默认 `BAAI/bge-small-zh-v1.5`，配置见上节；环境变量由调用方设置，不自动读取 .env。预留的 EMBEDDING_BASE_URL/API_KEY 本轮不使用。
 **低置信/待验证**：`MODEL_THINKING=false` 是项目拟定配置约定，尚未映射或验证供应商请求参数。
 模板数据结构为 `template_id`、`title`、`sections[{name, questions, keywords}]`；后续在 `templates/` 添加 YAML 并实现加载器。
 
 ## 测试与未验证项
+
+第 3 轮任务 2 验证（2026-10-27，Windows / Python 3.12.10）：
+
+```powershell
+.venv\Scripts\python.exe -m pytest -q -rs --basetemp=C:\Workplace\Work\30.doc2report-agent\.tmp\pytest
+```
+
+- 检索实现后的原有回归：**62 passed, 24 skipped**；补充检索/工具测试后：**77 passed, 26 skipped, 0 failed**。
+- 26 skipped = Milvus 契约 11 项（Windows 不支持）+ 引用核验 1 项 + 其他工具 14 项。search_chunks 已无 skip；其他工具 skip 不变。
+- 有 1 个 `.pytest_cache` 权限 warning，不影响结果；使用指定 basetemp，无 setup 错误。
+- 本机有 RTX 3050（用户提供），测试全部使用假 embedding/模型替身，未使用 GPU、未下载模型。覆盖中文三模式、RRF 精确分值、来源保留、过滤、工具错误与日志及 CUDA/CPU/覆盖配置分支。去噪回归通过。
+- **未验证 / 低置信**：真实公开年报召回质量、本地模型与 RTX 3050 实际运行、Milvus 实机兼容性与性能，需人工验收。详见 [任务 2 开发记录](docs/devlog/2026-10-r3-retrieval.md)。任务 3 未实施。
 
 第 3 轮任务 1 验证（2026-10-27，原生 Windows / Python 3.12.10，仓库 `.venv`，不使用 GPU）：
 

@@ -93,3 +93,32 @@ def test_embedding_validation():
     instance.embedder = fake_embedding
     with pytest.raises(ValueError, match="dimension"):
         instance.search("apple")
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "vector", "bm25"])
+def test_chinese_retrieval(retriever, mode):
+    from core.index.embeddings import hash_embeddings, tokenize
+
+    assert "收入" in tokenize("营业收入同比增长")
+    retriever.embedder = hash_embeddings
+    retriever.index_chunks([chunk(1, "营业收入同比增长"), chunk(2, "研发投入增加", "b"),
+                            chunk(3, "资产负债结构"), chunk(4, "公司治理情况")])
+    assert retriever.search("营业收入", mode=mode, top_k=1)[0].chunk_id == "1"
+    assert {h.doc_id for h in retriever.search("营业收入", doc_ids=["b"], mode=mode)} == {"b"}
+
+
+def test_rrf_exact_ranks(retriever):
+    # Lexical winner differs from vector winner; RRF uses ranks, not score magnitude.
+    retriever.index_chunks([chunk(1, "apple apple"), chunk(2, "pear"),
+                            chunk(3, "plum"), chunk(4, "orange")])
+    retriever.embedder = lambda texts: np.asarray([[0, 1, 1] for _ in texts])
+    vector = retriever.search("apple", mode="vector")
+    lexical = retriever.search("apple", mode="bm25")
+    assert vector[0].chunk_id != lexical[0].chunk_id
+    expected = {}
+    for hits in (vector, lexical):
+        for rank, hit in enumerate(hits, 1):
+            expected[hit.chunk_id] = expected.get(hit.chunk_id, 0) + 1 / (60 + rank)
+    hybrid = retriever.search("apple", mode="hybrid")
+    assert {h.chunk_id: h.score for h in hybrid} == pytest.approx(expected)
+    assert retriever.search("apple", top_k=1)[0] == hybrid[0]

@@ -1,13 +1,15 @@
-"""Search document chunks: contracts only, no business logic."""
+"""Search through the Retriever contract and preserve source metadata."""
 
-from typing import Literal
+import logging
+from time import perf_counter
 
 from pydantic import BaseModel, Field
 
-from core.models import SearchHit, SearchMode, ToolMetadata, ToolResult
+from core.models import SearchHit, SearchMode, Source, ToolMetadata, ToolResult
 from core.index.retriever import Retriever
 
 METADATA = ToolMetadata(name="search_chunks", description_zh="检索文档片段", description_en="Search document chunks")
+logger = logging.getLogger(__name__)
 
 
 class SearchChunksInput(BaseModel):
@@ -25,4 +27,17 @@ SearchChunksOutput = ToolResult[SearchChunksData]
 
 
 def search_chunks(request: SearchChunksInput, *, retriever: Retriever) -> SearchChunksOutput:
-    raise NotImplementedError("Step 1: search_chunks contract only")
+    started = perf_counter()
+    try:
+        hits = retriever.search(request.query, doc_ids=request.doc_ids,
+                                top_k=request.top_k, mode=request.mode)
+        result = SearchChunksOutput(ok=True, data=SearchChunksData(chunks=hits),
+            sources=[Source(file=h.file, page=h.page, chunk_id=h.chunk_id) for h in hits])
+    except Exception as exc:
+        result = SearchChunksOutput(ok=False, error=f"{type(exc).__name__}: {exc}")
+    logger.info(
+        "tool=search_chunks query_chars=%d doc_count=%s top_k=%d mode=%s elapsed_seconds=%.6f ok=%s",
+        len(request.query), None if request.doc_ids is None else len(request.doc_ids),
+        request.top_k, request.mode, perf_counter() - started, result.ok,
+    )
+    return result
