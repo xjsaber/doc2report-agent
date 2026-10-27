@@ -1,4 +1,4 @@
-"""Retrieve-then-answer with mandatory [file pN] citations; refuse when empty."""
+"""Retrieve-then-answer with mandatory [file pN] citations; refuse when empty or invalid."""
 
 from __future__ import annotations
 
@@ -8,10 +8,25 @@ from pathlib import Path
 import os
 import re
 
+from core.index.embeddings import EmbeddingProvider
+from core.index.relevance import filter_relevant_hits
 from core.index.retriever import Retriever
 from core.models import SearchHit
 from core.qa.llm import ChatMessage, ChatModel, build_chat_model
 from core.tools.search_chunks import SearchChunksInput, search_chunks
+
+# Model must emit this exact phrase when evidence is insufficient.
+REFUSAL_PHRASE = "资料中未找到依据"
+
+_SYSTEM = (
+    "你是严谨的文档问答助手。只根据用户提供的检索片段作答；"
+    "不得编造片段中没有的事实或数字。"
+    "每条相关结论后必须标注引用，格式严格为 [文件名 p页码]，例如 [report.pdf p3]。"
+    f"若片段不足以回答，只输出固定句「{REFUSAL_PHRASE}」，不要猜测，不要附加引用。"
+)
+
+# Capture file name and page: [something.pdf p12]
+_CITATION_RE = re.compile(r"\[([^\[\]]+?)\s+p(\d+)\]")
 
 
 @dataclass
@@ -37,16 +52,6 @@ class AnswerResult:
     refused: bool = False
     retrieval_only: bool = False
     message: str | None = None
-
-
-_SYSTEM = (
-    "你是严谨的文档问答助手。只根据用户提供的检索片段作答；"
-    "不得编造片段中没有的事实或数字。"
-    "每条关键结论后必须标注引用，格式严格为 [文件名 p页码]，例如 [report.pdf p3]。"
-    "若片段不足以回答，明确说明无法从资料中找到依据，不要猜测。"
-)
-
-_CITATION_RE = re.compile(r"\[[^\]]+\s+p\d+\]")
 
 
 def load_dotenv_config(path: str | Path | None = None) -> dict[str, str]:
@@ -94,14 +99,27 @@ def _format_context(citations: Sequence[Citation]) -> str:
     return "\n\n".join(blocks)
 
 
-def _ensure_citation_markers(answer: str, citations: Sequence[Citation]) -> str:
-    """Append missing required markers once; never invent new page numbers."""
-    if not citations:
-        return answer
-    missing = [c.label for c in citations if c.label not in answer]
-    if not missing:
-        return answer
-    return answer.rstrip() + "\n\n参考：" + " ".join(dict.fromkeys(missing))
+def parse_citation_markers(text: str) -> list[tuple[str, int]]:
+    """Return (file, page) pairs in appearance order."""
+    return [(match.group(1).strip(), int(match.group(2))) for match in _CITATION_RE.finditer(text or "")]
+
+
+def validate_answer_citations(
+    answer: str,
+    allowed: Sequence[Citation],
+) -> tuple[bool, str | None]:
+    """Require every [file pN] to appear in this retrieval; refuse if none or any fabricated."""
+    allowed_set = {(c.file, c.page) for c in allowed}
+    found = parse_citation_markers(answer)
+    if not found:
+        return False, "模型回答缺少有效引用标记，已拒绝展示以避免无依据内容。"
+    for file_name, page in found:
+        if (file_name, page) not in allowed_set:
+            return False, (
+                f"回答含有不在本次检索结果中的引用 [{file_name} p{page}]，"
+                "已拒绝展示以避免编造出处。"
+            )
+    return True, None
 
 
 def answer_question(
@@ -113,8 +131,10 @@ def answer_question(
     top_k: int = 8,
     mode: str = "hybrid",
     auto_build_model: bool = True,
+    embedder: EmbeddingProvider | None = None,
+    min_vector_score: float | None = None,
 ) -> AnswerResult:
-    """Hybrid retrieve then answer. Refuses when no hits; retrieval-only without API key."""
+    """Hybrid retrieve then answer. Refuses when no relevant hits or invalid citations."""
     query = (question or "").strip()
     if not query:
         return AnswerResult(
@@ -141,7 +161,17 @@ def answer_question(
             message=tool.error or "检索失败",
         )
 
-    hits = tool.data.chunks if tool.data else []
+    raw_hits = tool.data.chunks if tool.data else []
+    # Prefer retriever-bound embedder when present so tests stay consistent.
+    bound = embedder
+    if bound is None and hasattr(retriever, "embedder"):
+        bound = getattr(retriever, "embedder")
+    hits = filter_relevant_hits(
+        query,
+        raw_hits,
+        embedder=bound,
+        min_vector_score=min_vector_score,
+    )
     citations = _citations_from_hits(hits)
     if not citations:
         return AnswerResult(
@@ -171,21 +201,32 @@ def answer_question(
 
     user_prompt = (
         f"问题：{query}\n\n检索片段：\n{_format_context(citations)}\n\n"
-        "请用中文回答，并在依据处标注 [文件名 p页码]。"
+        f"请用中文回答，并在依据处标注 [文件名 p页码]。"
+        f"若无法依据片段回答，只输出「{REFUSAL_PHRASE}」。"
     )
     raw = model.complete(
         [
             ChatMessage(role="system", content=_SYSTEM),
             ChatMessage(role="user", content=user_prompt),
         ]
-    )
-    answer = _ensure_citation_markers(raw, citations)
-    if not _CITATION_RE.search(answer):
+    ).strip()
+
+    if REFUSAL_PHRASE in raw:
         return AnswerResult(
             question=query,
             answer=None,
             citations=citations,
             refused=True,
-            message="模型回答缺少引用标记，已拒绝展示以避免无依据内容。",
+            message=REFUSAL_PHRASE,
         )
-    return AnswerResult(question=query, answer=answer, citations=citations)
+
+    ok, error = validate_answer_citations(raw, citations)
+    if not ok:
+        return AnswerResult(
+            question=query,
+            answer=None,
+            citations=citations,
+            refused=True,
+            message=error,
+        )
+    return AnswerResult(question=query, answer=raw, citations=citations)

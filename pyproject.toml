@@ -14,7 +14,7 @@ dependencies = ["pydantic>=2.7,<3", "PyMuPDF>=1.24,<2", "numpy>=1.26,<3", "rank-
 [project.optional-dependencies]
 dev = ["pytest>=8,<9"]
 embedding = ["sentence-transformers>=3,<6"]
-milvus = ["pymilvus>=2.5,<2.7", "milvus-lite>=2.5,<2.6; sys_platform != 'win32'"]
+milvus = ["pymilvus>=2.5,<2.7", "milvus-lite>=2.5,<2.6; sys_platform != 'win32'", "setuptools>=68,<81"]
 qa = ["streamlit>=1.32,<2", "openai>=1.40,<2"]
 
 [tool.setuptools.packages.find]

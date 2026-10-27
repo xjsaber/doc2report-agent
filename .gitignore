@@ -17,3 +17,5 @@ outputs/
 *.egg-info/
 build/
 dist/
+output/
+.tmp/

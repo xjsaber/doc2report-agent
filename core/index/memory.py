@@ -7,6 +7,7 @@ from rank_bm25 import BM25Okapi
 
 from core.models import Chunk, SearchHit, SearchMode
 from core.index.embeddings import EmbeddingProvider, get_embedding_provider, hash_embeddings, tokenize
+from core.index.query_instruction import apply_query_instruction
 
 Embedder = EmbeddingProvider
 
@@ -55,7 +56,9 @@ class MemoryRetriever:
         chunks = [chunk for chunk in self._chunks.values() if allowed is None or chunk.doc_id in allowed]
         if not chunks or not query.strip():
             return []
-        vector = self._vector_scores(self._embed([query])[0], chunks) if mode != "bm25" else None
+        # Query-only instruction prefix for local BGE; documents stay raw.
+        vector = (self._vector_scores(self._embed([apply_query_instruction(query)])[0], chunks)
+                  if mode != "bm25" else None)
         bm25 = None
         if mode != "vector":
             corpus = [tokenize(chunk.text) for chunk in chunks]

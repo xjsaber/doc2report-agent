@@ -2,9 +2,12 @@
 
 import os
 
+import numpy as np
+
 from core.index import get_retriever
 from core.models import Chunk
 from core.qa import FakeChatModel, answer_question, load_dotenv_config
+from core.qa.answer import REFUSAL_PHRASE
 from core.qa.llm import build_chat_model
 
 
@@ -18,6 +21,21 @@ def _chunk(n: int, text: str, doc_id: str = "a", file: str = "synthetic.pdf", pa
         page_end=page,
         section="第一节 公司概况",
     )
+
+
+def _orthogonal_embedder(query_axis: str = "业务"):
+    """Docs about query_axis align with query; others are orthogonal → fail vector gate."""
+
+    def embed(texts):
+        rows = []
+        for text in texts:
+            if query_axis in text:
+                rows.append([1.0, 0.0, 0.0])
+            else:
+                rows.append([0.0, 1.0, 0.0])
+        return np.asarray(rows, dtype=np.float32)
+
+    return embed
 
 
 def test_refuse_when_no_hits():
@@ -79,9 +97,52 @@ def test_load_dotenv_does_not_override(tmp_path, monkeypatch):
     assert os.environ["MODEL"] == "deepseek-flash"
 
 
-def test_appends_missing_citation_markers():
+def test_fabricated_citation_refused():
     retriever = get_retriever("memory")
     retriever.index_chunks([_chunk(1, "公司主营业务为自主研发的软件产品与技术服务。")])
-    fake = FakeChatModel("主营业务为软件产品。")
+    fake = FakeChatModel("主营业务为软件产品。[ghost.pdf p99]")
     result = answer_question("主营业务", retriever=retriever, chat_model=fake)
-    assert result.answer and "[synthetic.pdf p2]" in result.answer
+    assert result.refused is True
+    assert result.answer is None
+    assert "不在本次检索" in (result.message or "") or "拒绝" in (result.message or "")
+    assert fake.calls  # model was called; post-check refused
+
+
+def test_missing_citation_refused():
+    retriever = get_retriever("memory")
+    retriever.index_chunks([_chunk(1, "公司主营业务为自主研发的软件产品与技术服务。")])
+    fake = FakeChatModel("主营业务为软件产品，无任何出处。")
+    result = answer_question("主营业务", retriever=retriever, chat_model=fake)
+    assert result.refused is True
+    assert result.answer is None
+    assert "引用" in (result.message or "")
+
+
+def test_model_self_refusal_phrase():
+    # Query overlaps the chunk (passes relevance) but model still emits the fixed refusal phrase.
+    retriever = get_retriever("memory")
+    retriever.index_chunks([_chunk(1, "公司主营业务为自主研发的软件产品与技术服务。")])
+    fake = FakeChatModel(f"{REFUSAL_PHRASE}")
+    result = answer_question("主营业务的海外分部收入是多少", retriever=retriever, chat_model=fake)
+    assert result.refused is True
+    assert result.answer is None
+    assert result.message == REFUSAL_PHRASE
+    assert fake.calls
+
+
+def test_all_irrelevant_skips_model():
+    embedder = _orthogonal_embedder("量子力学术语ZXQ")
+    retriever = get_retriever("memory", embedder=embedder)
+    # Indexed text shares no tokens with the astronomy query and is orthogonal in vector space.
+    retriever.index_chunks([_chunk(1, "公司办公地址与联系电话已披露。")])
+    fake = FakeChatModel("不应被调用")
+    result = answer_question(
+        "量子力学术语ZXQ黑洞熵是多少",
+        retriever=retriever,
+        chat_model=fake,
+        min_vector_score=0.35,
+    )
+    assert result.refused is True
+    assert result.answer is None
+    assert "依据" in (result.message or "")
+    assert fake.calls == []
