@@ -1,7 +1,19 @@
-"""Positive/error case slots; no simulated business success."""
+"""Positive/error cases for v1 tools (export_report remains deferred)."""
+
+from decimal import Decimal
+
 import pytest
 
+from core.models import Fact, Source
+from core.parse.store import clear_documents, put_document
+from core.tools.calc_financials import CalcFinancialsInput, MetricValue, PeriodValues, calc_financials
+from core.tools.export_report import ExportReportInput, export_report
+from core.tools.get_table import GetTableInput, get_table
 from core.tools.parse_document import ParseDocumentInput, parse_document
+from core.tools.render_section import RenderSectionInput, render_section
+from core.tools.templates import ListTemplatesInput, LoadTemplateInput, list_templates, load_template
+from core.tools.verify_claim import VerifyClaimInput, verify_claim
+from core.parse.models import ParsedDocument, ParsedPage, ParsedTable
 
 
 def test_parse_document_success(sample_pdf, caplog):
@@ -48,11 +60,140 @@ def test_parse_document_mineru_fallback(sample_pdf, monkeypatch):
     assert result.data.engine == "pymupdf"
 
 
-@pytest.mark.parametrize("tool", [
-    "get_table", "calc_financials",
-    "verify_claim", "render_section", "export_report", "list_templates", "load_template",
-])
+def _seed_table_doc(doc_id: str = "doc-table") -> ParsedDocument:
+    clear_documents()
+    document = ParsedDocument(
+        doc_id=doc_id,
+        file="synthetic.pdf",
+        engine="pymupdf",
+        pages=[
+            ParsedPage(page=1, text="合并利润表及相关说明", blocks=[]),
+            ParsedPage(page=2, text="其他页面", blocks=[]),
+        ],
+        sections=[],
+        tables=[
+            ParsedTable(
+                table_id="t1",
+                page=1,
+                caption="合并利润表",
+                headers=["项目", "本期"],
+                rows=[["营业收入", "100"], ["净利润", "20"]],
+                raw_text="合并利润表 营业收入 100 净利润 20",
+            )
+        ],
+    )
+    put_document(document)
+    return document
+
+
+def test_get_table_success_by_id():
+    _seed_table_doc()
+    result = get_table(GetTableInput(doc_id="doc-table", table_id="t1"))
+    assert result.ok and result.data
+    assert result.data.headers[0] == "项目"
+    assert result.data.page == 1
+
+
+def test_get_table_success_by_keyword():
+    _seed_table_doc()
+    result = get_table(GetTableInput(doc_id="doc-table", keyword="合并利润表"))
+    assert result.ok and result.data
+    assert result.data.table_id == "t1"
+
+
+def test_get_table_error_missing_doc():
+    clear_documents()
+    result = get_table(GetTableInput(doc_id="missing", table_id="t1"))
+    assert result.ok is False
+    assert result.error
+
+
+def test_calc_financials_success():
+    src = [Source(file="synthetic.pdf", page=1, chunk_id="c1")]
+    result = calc_financials(
+        CalcFinancialsInput(
+            values={
+                "营业收入": PeriodValues(
+                    current=MetricValue(value=Decimal("120"), sources=src),
+                    previous=MetricValue(value=Decimal("100"), sources=src),
+                ),
+                "营业成本": PeriodValues(current=MetricValue(value=Decimal("60"), sources=src)),
+                "净利润": PeriodValues(
+                    current=MetricValue(value=Decimal("30"), sources=src),
+                    previous=MetricValue(value=Decimal("20"), sources=src),
+                ),
+                "经营活动现金流": PeriodValues(current=MetricValue(value=Decimal("15"), sources=src)),
+                "总资产": PeriodValues(current=MetricValue(value=Decimal("200"), sources=src)),
+                "总负债": PeriodValues(current=MetricValue(value=Decimal("80"), sources=src)),
+            }
+        )
+    )
+    assert result.ok and result.data
+    by_name = {m.name: m for m in result.data.metrics}
+    assert by_name["营业收入同比增速"].value == Decimal("0.2")
+    assert by_name["毛利率"].value == Decimal("0.5")
+    assert by_name["净利率"].value == Decimal("0.25")
+    assert by_name["资产负债率"].value == Decimal("0.4")
+    assert by_name["净现比"].value == Decimal("0.5")
+
+
+def test_calc_financials_error_empty():
+    result = calc_financials(CalcFinancialsInput(values={}))
+    assert result.ok is False
+
+
+def test_verify_claim_success_and_mismatch():
+    lookup = {"c1": "营业收入 120.5 亿元，净利润 30 亿元。"}
+    ok = verify_claim(VerifyClaimInput(claim="营业收入为 120.5 亿元", source_chunk_ids=["c1"]), chunk_lookup=lookup)
+    assert ok.ok and ok.data and ok.data.status == "supported"
+    bad = verify_claim(VerifyClaimInput(claim="营业收入为 999 亿元", source_chunk_ids=["c1"]), chunk_lookup=lookup)
+    assert bad.ok and bad.data and bad.data.status == "mismatch"
+
+
+def test_verify_claim_error_without_lookup():
+    result = verify_claim(VerifyClaimInput(claim="营收 1", source_chunk_ids=["c1"]))
+    assert result.ok is False
+
+
+def test_render_section_success():
+    result = render_section(
+        RenderSectionInput(
+            section_name="公司概况",
+            template_id="company_analysis",
+            facts=[
+                Fact(
+                    text="公司专注软件产品。",
+                    sources=[Source(file="synthetic.pdf", page=2, chunk_id="c1")],
+                )
+            ],
+        )
+    )
+    assert result.ok and result.data
+    assert "## 公司概况" in result.data.markdown
+    assert "[synthetic.pdf p2]" in result.data.markdown
+
+
+def test_render_section_error_empty_facts():
+    result = render_section(
+        RenderSectionInput(section_name="公司概况", template_id="company_analysis", facts=[])
+    )
+    assert result.ok is False
+
+
+def test_list_templates_success():
+    result = list_templates(ListTemplatesInput())
+    assert result.ok and result.data
+    assert any(t.template_id == "company_analysis" for t in result.data.templates)
+
+
+def test_load_template_success_and_error():
+    ok = load_template(LoadTemplateInput(template_id="company_analysis"))
+    assert ok.ok and ok.data and ok.data.template.title == "年报分析"
+    bad = load_template(LoadTemplateInput(template_id="does-not-exist"))
+    assert bad.ok is False
+
+
+@pytest.mark.skip(reason="export_report deferred to next round")
 @pytest.mark.parametrize("case", ["success", "error"])
-@pytest.mark.skip(reason="Step 1: business implementation deferred")
-def test_tool_behavior(tool, case):
-    pass
+def test_export_report_deferred(case):
+    export_report(ExportReportInput(report_md="# t", format="md", title="t"))

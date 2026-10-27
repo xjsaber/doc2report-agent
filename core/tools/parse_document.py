@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from core.models import Chunk, Source, ToolMetadata, ToolResult
 from core.parse import Section, chunk_document, parse_pdf
+from core.parse.store import put_document
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ def parse_document(request: ParseDocumentInput) -> ParseDocumentOutput:
     started = perf_counter()
     try:
         document = parse_pdf(request.file_path, engine=request.engine)
+        put_document(document)
         chunks = chunk_document(document)
         result = ParseDocumentOutput(
             ok=True,

@@ -10,7 +10,7 @@ An open-source project for source-backed reports and standalone RAG Q&A over pub
 
 第 2 轮已完成脚手架评审小改、`core/parse` 的 PDF 解析与切块，以及 `parse_document` 工具。第 3 轮任务 1 增加切块前页眉页脚去噪和 memory / milvus Retriever 骨架与契约测试。
 默认使用 PyMuPDF，保留从 1 开始的物理页码，抽取文字、标题和表格；MinerU 可选，未安装、接口不兼容或执行失败时记录 warning 并回退。
-第 3 轮已完成去噪、双 Retriever、混合召回、search_chunks 与独立 RAG 问答页。第 4 轮任务 1 已修拒答/引用校验阻断项；任务 2 已实现 LangGraph（plan→retrieve→write→verify→assemble）与年报分析模板。真实模型与 RTX 3050 推理尚未实测；get_table/calc_financials/CLI、MCP、Word 导出仍待本轮任务 3 / 后续。Milvus 适配代码已提供，原生 Windows 未实机运行。
+第 3 轮已完成去噪、双 Retriever、混合召回、search_chunks 与独立 RAG 问答页。第 4 轮任务 1 已修拒答/引用校验阻断项；任务 2 已实现 LangGraph（plan→retrieve→write→verify→assemble）与年报分析模板。真实模型与 RTX 3050 推理尚未实测；任务 3 已实现 get_table、calc_financials 与 `python -m core.graph.run`；export_report、MCP、Word 导出留待后续。Milvus 适配代码已提供，原生 Windows 未实机运行。
 约束以 [AGENTS.md](AGENTS.md) 为准，另见 [功能要求](docs/CODEX_PROMPT.md)、[工具规范](docs/TOOLS_SPEC.md)、[路线图](docs/ROADMAP.md)。
 
 ## 架构（规划）
@@ -62,12 +62,12 @@ flowchart TD
 | --- | --- | --- |
 | parse_document（已实现） | file_path、engine | doc_id、pages、sections、tables；新增 chunks、实际 engine |
 | search_chunks（已实现） | query、doc_ids、top_k、mode；注入 Retriever | chunks，含 doc_id/章节/文本/评分/出处 |
-| get_table | doc_id、table_id 或 keyword | headers、rows、page、raw_text 回退 |
-| calc_financials | 各财务原值的 current/previous、来源 | Decimal 指标值、公式、输入值及来源 |
-| verify_claim | claim、source_chunk_ids | supported/not_found/mismatch、证据、差异 |
-| render_section | section_name、template_id、facts | 带引用的 Markdown（待实现） |
+| get_table（已实现） | doc_id、table_id 或 keyword | headers、rows、page、raw_text 回退 |
+| calc_financials（已实现） | 各财务原值的 current/previous、来源 | Decimal 指标值、公式、输入值及来源 |
+| verify_claim（已实现） | claim、source_chunk_ids | supported/not_found/mismatch、证据、差异 |
+| render_section（已实现） | section_name、template_id、facts | 带引用的 Markdown |
 | export_report | report_md、format、title | file_path |
-| templates：list_templates / load_template | 空输入 / template_id | 模板列表 / 完整模板 |
+| templates：list_templates / load_template（已实现） | 空输入 / template_id | 模板列表 / 完整模板 |
 
 工具不直接访问网络；样例下载是文档允许的例外。模型调用与工具层的具体边界留待实现阶段设计。
 MCP、自动生成工具文档、实际注册分发和统一调用日志尚未实现。
@@ -167,6 +167,10 @@ streamlit run app/rag.py
 ## 测试与未验证项
 
 第 4 轮任务 2 验证（2026-10-27）：`python -m pytest -q -rs` → **95 passed, 26 skipped**。假模型覆盖正常 / 重写一次 / 仍待核实。
+
+第 4 轮任务 3 验证（2026-10-27）：`python -m pytest -q -rs` → **107 passed, 13 skipped**（Milvus 11 + export_report 2）。
+
+报告 CLI：`python -m core.graph.run --pdf <公开年报路径>`（需 `.env` 中 `API_KEY`；输出到已忽略的 `output/`）。
 
 第 4 轮任务 1 验证（2026-10-27，实现环境 Linux / Python 3.13.5；目标机 Windows / Python 3.12.10）：
 
