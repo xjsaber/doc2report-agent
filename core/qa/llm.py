@@ -23,13 +23,33 @@ class ChatModel(Protocol):
 class FakeChatModel:
     """Deterministic stand-in for tests; never calls a network."""
 
-    def __init__(self, reply: str = "这是基于检索片段的回答。") -> None:
-        self.reply = reply
+    def __init__(
+        self,
+        reply: str | Sequence[str] = "这是基于检索片段的回答。",
+        *,
+        reply_factory=None,
+    ) -> None:
+        if isinstance(reply, str):
+            self._replies = [reply]
+        else:
+            self._replies = list(reply)
+        self.reply_factory = reply_factory
         self.calls: list[list[ChatMessage]] = []
+        self._index = 0
+
+    @property
+    def reply(self) -> str:
+        return self._replies[min(self._index, len(self._replies) - 1)]
 
     def complete(self, messages: Sequence[ChatMessage]) -> str:
         self.calls.append(list(messages))
-        return self.reply
+        if self.reply_factory is not None:
+            out = self.reply_factory(messages, self._index)
+            self._index += 1
+            return out
+        out = self._replies[min(self._index, len(self._replies) - 1)]
+        self._index += 1
+        return out
 
 
 class OpenAICompatibleChat:

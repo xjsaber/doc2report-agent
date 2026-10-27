@@ -10,7 +10,7 @@ An open-source project for source-backed reports and standalone RAG Q&A over pub
 
 第 2 轮已完成脚手架评审小改、`core/parse` 的 PDF 解析与切块，以及 `parse_document` 工具。第 3 轮任务 1 增加切块前页眉页脚去噪和 memory / milvus Retriever 骨架与契约测试。
 默认使用 PyMuPDF，保留从 1 开始的物理页码，抽取文字、标题和表格；MinerU 可选，未安装、接口不兼容或执行失败时记录 warning 并回退。
-第 3 轮已完成去噪、双 Retriever、混合召回、search_chunks 与独立 RAG 问答页。第 4 轮任务 1 已修拒答/引用校验阻断项，并增加 MIN_VECTOR_SCORE、EMBED_QUERY_INSTRUCTION 与 milvus 的 setuptools<81。真实模型与 RTX 3050 推理尚未实测；LangGraph 报告流程、其余报告工具、MCP、Word 导出仍待本轮后续任务。Milvus 适配代码已提供，原生 Windows 未实机运行。
+第 3 轮已完成去噪、双 Retriever、混合召回、search_chunks 与独立 RAG 问答页。第 4 轮任务 1 已修拒答/引用校验阻断项；任务 2 已实现 LangGraph（plan→retrieve→write→verify→assemble）与年报分析模板。真实模型与 RTX 3050 推理尚未实测；get_table/calc_financials/CLI、MCP、Word 导出仍待本轮任务 3 / 后续。Milvus 适配代码已提供，原生 Windows 未实机运行。
 约束以 [AGENTS.md](AGENTS.md) 为准，另见 [功能要求](docs/CODEX_PROMPT.md)、[工具规范](docs/TOOLS_SPEC.md)、[路线图](docs/ROADMAP.md)。
 
 ## 架构（规划）
@@ -165,6 +165,8 @@ streamlit run app/rag.py
 模板数据结构为 `template_id`、`title`、`sections[{name, questions, keywords}]`；后续在 `templates/` 添加 YAML 并实现加载器。
 
 ## 测试与未验证项
+
+第 4 轮任务 2 验证（2026-10-27）：`python -m pytest -q -rs` → **95 passed, 26 skipped**。假模型覆盖正常 / 重写一次 / 仍待核实。
 
 第 4 轮任务 1 验证（2026-10-27，实现环境 Linux / Python 3.13.5；目标机 Windows / Python 3.12.10）：
 
