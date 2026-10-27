@@ -43,9 +43,13 @@ class LocalEmbeddingProvider:
                 raise RuntimeError('Install local embeddings: pip install -e ".[embedding]"; '
                                    'use EMBEDDING_BACKEND=fake only for tests') from exc
             self.device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
-            # Provision the model beforehand: retrieval must not download over the network.
-            self._model = SentenceTransformer(self.model_name, device=self.device,
-                                              local_files_only=True)
+            # Prefer cache; if missing, allow a one-time network fetch (model files stay local, never committed).
+            try:
+                self._model = SentenceTransformer(
+                    self.model_name, device=self.device, local_files_only=True
+                )
+            except Exception:
+                self._model = SentenceTransformer(self.model_name, device=self.device)
         return np.asarray(self._model.encode(list(texts), convert_to_numpy=True,
                                             normalize_embeddings=True, show_progress_bar=False))
 

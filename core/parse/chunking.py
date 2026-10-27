@@ -56,6 +56,36 @@ def _section_chunks(
     return chunks
 
 
+
+def merge_short_chunks(chunks: list[Chunk], *, min_chars: int) -> list[Chunk]:
+    """Merge adjacent same-section chunks when either side is shorter than min_chars/2."""
+    if not chunks:
+        return []
+    threshold = max(1, min_chars // 2)
+    merged: list[Chunk] = []
+    for chunk in chunks:
+        if not merged:
+            merged.append(chunk)
+            continue
+        prev = merged[-1]
+        same_section = prev.section == chunk.section and prev.doc_id == chunk.doc_id
+        if same_section and (len(prev.text) < threshold or len(chunk.text) < threshold):
+            combined = f"{prev.text}\n\n{chunk.text}".strip()
+            identity = f"{prev.doc_id}:merged:{prev.chunk_id}:{chunk.chunk_id}:{combined}"
+            merged[-1] = Chunk(
+                chunk_id=sha256(identity.encode("utf-8")).hexdigest(),
+                doc_id=prev.doc_id,
+                file=prev.file,
+                text=combined,
+                page=prev.page,
+                page_end=chunk.page_end or chunk.page,
+                section=prev.section,
+            )
+        else:
+            merged.append(chunk)
+    return merged
+
+
 def chunk_document(
     document: ParsedDocument, *, min_chars: int = 500, max_chars: int = 800, overlap: int = 100,
 ) -> list[Chunk]:
@@ -86,4 +116,4 @@ def chunk_document(
         chunks.extend(_section_chunks(
             document, group, section, min_chars, max_chars, overlap, len(chunks),
         ))
-    return chunks
+    return merge_short_chunks(chunks, min_chars=min_chars)
