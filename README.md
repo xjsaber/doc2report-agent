@@ -10,7 +10,7 @@ An open-source project for source-backed reports and standalone RAG Q&A over pub
 
 第 2 轮已完成脚手架评审小改、`core/parse` 的 PDF 解析与切块，以及 `parse_document` 工具。第 3 轮任务 1 增加切块前页眉页脚去噪和 memory / milvus Retriever 骨架与契约测试。
 默认使用 PyMuPDF，保留从 1 开始的物理页码，抽取文字、标题和表格；MinerU 可选，未安装、接口不兼容或执行失败时记录 warning 并回退。
-第 3 轮任务 2 已完成 jieba BM25、向量/RRF 混合召回、可配置本地 embedding 适配及 search_chunks。真实模型尚未实测；LangGraph 运行时、Streamlit、MCP 和文件导出仍为占位，完整 Demo 尚未实现。Milvus 适配代码已提供，本轮 Windows 未实机运行。任务 3 未实施。
+第 3 轮任务 2 已完成 jieba BM25、向量/RRF 混合召回、可配置本地 embedding 适配及 search_chunks；任务 3 已完成独立 RAG 问答页（Streamlit，可单独启动）。真实模型与 RTX 3050 推理尚未实测；LangGraph 报告流程、MCP、Word 导出仍为占位。Milvus 适配代码已提供，本轮 Windows 未实机运行。
 约束以 [AGENTS.md](AGENTS.md) 为准，另见 [功能要求](docs/CODEX_PROMPT.md)、[工具规范](docs/TOOLS_SPEC.md)、[路线图](docs/ROADMAP.md)。
 
 ## 架构（规划）
@@ -80,7 +80,7 @@ MCP、自动生成工具文档、实际注册分发和统一调用日志尚未�
 2. `python -m pip install -e ".[dev]"`（含 PyMuPDF 和 pytest）。
 3. `python -m pytest -q`。
 
-本轮默认解析无需 `.env` 或 API key，无模型调用或 PDF 下载。`app/report.py` 和 `app/rag.py` 仅为未来可分别启动的入口。
+解析与检索默认无需 API key。独立问答页可单独启动；未配置 `API_KEY` 时只展示检索结果。`app/report.py` 仍为占位。
 
 ## 解析与切块
 
@@ -134,7 +134,30 @@ print(result.model_dump())
 可选开关为 `ParseDocumentInput(engine="mineru", ...)` 或 `parse_pdf(..., engine="mineru")`；默认依赖不安装 MinerU。本轮适配 [MinerU 4 本地 SDK](https://opendatalab.github.io/MinerU/usage/sdk_api/) 的 Flash/txt 模式，并通过 [Content List 渲染格式](https://opendatalab.github.io/MinerU/reference/output_files/) 保留原页码和表格原始标记；不支持的版本会记录原因并回退 PyMuPDF。表格原始标记暂不转换为二维单元格。`.env.example` 中 `PARSER` 的环境变量自动加载留待应用层实现。
 PyMuPDF 文字和表格抽取接口见 [官方 Page 文档](https://pymupdf.readthedocs.io/en/latest/page.html)。
 
+## 单独启动问答页
+
+先安装问答依赖：`python -m pip install -e ".[dev,qa]"`。在项目根目录复制 `.env.example` 为 `.env` 并填写 `API_KEY`（可选；不填则只显示检索命中）。不要提交 `.env`。
+
+Windows cmd：
+
+```bat
+cd /d C:\Workplace\Work\30.doc2report-agent
+.venv\Scripts\activate.bat
+streamlit run app\rag.py
+```
+
+Linux / WSL：
+
+```bash
+cd /path/to/doc2report-agent
+source .venv/bin/activate
+streamlit run app/rag.py
+```
+
+页面流程：上传或填写本机 PDF 路径 → 解析入库（memory Retriever）→ 提问 → 混合检索 → 有 Key 则调用 OpenAI 兼容接口回答并标注 `[文件名 p页码]`，可展开命中原文；无依据时拒答；无 Key 时提示配置并只展示检索结果。
+
 ## 配置与模板
+
 
 `.env.example` 预留 `BASE_URL`、`API_KEY`、`MODEL=deepseek-flash`、`RETRIEVER=milvus`、解析器及 embedding 配置。
 本地 embedding 默认 `BAAI/bge-small-zh-v1.5`，配置见上节；环境变量由调用方设置，不自动读取 .env。预留的 EMBEDDING_BASE_URL/API_KEY 本轮不使用。
@@ -153,7 +176,7 @@ PyMuPDF 文字和表格抽取接口见 [官方 Page 文档](https://pymupdf.read
 - 26 skipped = Milvus 契约 11 项（Windows 不支持）+ 引用核验 1 项 + 其他工具 14 项。search_chunks 已无 skip；其他工具 skip 不变。
 - 有 1 个 `.pytest_cache` 权限 warning，不影响结果；使用指定 basetemp，无 setup 错误。
 - 本机有 RTX 3050（用户提供），测试全部使用假 embedding/模型替身，未使用 GPU、未下载模型。覆盖中文三模式、RRF 精确分值、来源保留、过滤、工具错误与日志及 CUDA/CPU/覆盖配置分支。去噪回归通过。
-- **未验证 / 低置信**：真实公开年报召回质量、本地模型与 RTX 3050 实际运行、Milvus 实机兼容性与性能，需人工验收。详见 [任务 2 开发记录](docs/devlog/2026-10-r3-retrieval.md)。任务 3 未实施。
+- **未验证 / 低置信**：真实公开年报召回质量、本地模型与 RTX 3050 实际运行、Milvus 实机兼容性与性能，需人工验收。详见 [任务 2 开发记录](docs/devlog/2026-10-r3-retrieval.md)。任务 3 已用假模型覆盖问答拒答/引用/无 Key 仅检索链路，见 `tests/test_qa.py`。 任务 3 本地复跑：`.venv/bin/python -m pytest -q -rs` → **84 passed, 26 skipped**（Linux 同步环境；Windows 笔记本复跑结果以提交信息为准）。
 
 第 3 轮任务 1 验证（2026-10-27，原生 Windows / Python 3.12.10，仓库 `.venv`，不使用 GPU）：
 
