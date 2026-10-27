@@ -8,9 +8,9 @@ An open-source project for source-backed reports and standalone RAG Q&A over pub
 
 ## 当前范围
 
-第 2 轮已完成脚手架评审小改、`core/parse` 的 PDF 解析与切块，以及 `parse_document` 工具。
+第 2 轮已完成脚手架评审小改、`core/parse` 的 PDF 解析与切块，以及 `parse_document` 工具。第 3 轮任务 1 增加切块前页眉页脚去噪和 memory / milvus Retriever 骨架与契约测试。
 默认使用 PyMuPDF，保留从 1 开始的物理页码，抽取文字、标题和表格；MinerU 可选，未安装、接口不兼容或执行失败时记录 warning 并回退。
-其余业务入口仍为占位；未接入模型、向量库、LangGraph 运行时、Streamlit、MCP 或文件导出，完整 Demo 尚未实现。
+其余业务入口仍为占位；未接入真实模型、search_chunks、LangGraph 运行时、Streamlit、MCP 或文件导出，完整 Demo 尚未实现。Milvus 适配代码已提供，本轮 Windows 未实机运行。
 约束以 [AGENTS.md](AGENTS.md) 为准，另见 [功能要求](docs/CODEX_PROMPT.md)、[工具规范](docs/TOOLS_SPEC.md)、[路线图](docs/ROADMAP.md)。
 
 ## 架构（规划）
@@ -20,7 +20,8 @@ flowchart TD
     Report["app/report.py 报告页"] --> Parse["core/parse 解析与切块"]
     RAG["app/rag.py 独立知识库问答页"] --> Parse
     Parse --> Index["core/index Retriever 接口"]
-    Index -.默认实现待开发.-> Milvus["Milvus Lite + BM25"]
+    Index --> Memory["Memory：numpy + BM25（Windows 默认）"]
+    Index --> Milvus["Milvus Lite + BM25（待跨平台验证）"]
     Report --> Plan["plan"]
     Plan --> Retrieve["retrieve"]
     Retrieve --> Write["write"]
@@ -102,6 +103,26 @@ else:
 切块先按标题分组，再优先使用段落边界，其次句子边界，长段落按字符截断。默认 500–800 个 Python 字符（包含内部空白），同章节相邻片段重叠 100 字；短章节保留为短块，尾块不足 500 字时扩大重叠。片段可以跨页，以 `page` / `page_end` 标出实际原文范围，不跨标题混合正文。
 标题采用字号与编号启发式识别；复杂多栏、目录、重复页眉和无边框表格可能识别不准。表格检测失败会记录 warning，页内原文仍保留。空白/扫描页保留页码，默认不启用 OCR，整份无可提取文字时记录 warning；缺失、损坏或需密码的 PDF 返回失败工具结果。
 
+`chunk_document` 在分组前自动去噪，不修改传入的解析原文。PyMuPDF 提供页面顶部/底部各 10% 高度内的候选行；无坐标时，以至少有 3 行的页面首尾非空行作为候选。同一规范化行在全部页面的 ≥30% 且至少 2 个不同页面出现时，剔除首尾连续匹配行，正文内部同名行保留。纯数字和“第 N 页”等独立页码统一匹配；不替换正文中的数字。空白页计入比例分母，单页不去重。
+**低置信/待人工抽查**：10% 边缘范围、无坐标首尾行与页码归一化都是启发式，可能误删反复出现的边缘正文，或漏掉混合文本页码；尚未用真实公开年报验证。
+
+## Retriever（第 3 轮任务 1）
+
+```python
+from core.index import get_retriever
+
+retriever = get_retriever("memory")
+retriever.index_chunks(chunks)
+hits = retriever.search("营业收入", doc_ids=None, top_k=8, mode="hybrid")
+```
+
+- 选择优先级：显式参数 > 环境变量 `RETRIEVER` > 平台默认。原生 Windows 默认 `memory`；Linux/macOS/WSL 默认 `milvus`。不会自动读取 `.env`；测试通过 fixture 强制环境默认 `memory`，参数化用例显式选择后端。
+- `memory` 使用 numpy 余弦和 rank-bm25；本轮仅内存存储，未做可选 pickle。`index_chunks` 按 chunk_id 更新，空输入不清空；`doc_ids=[]` 不匹配任何文档。空查询返回空列表，非法 mode 或 top_k < 1 抛 ValueError。
+- 三种 mode 均可调用。默认 hash 向量仅是可运行骨架，不提供语义理解；可通过 `embedder=` 注入批量向量函数。BM25 暂按英文词/单个汉字分词；hybrid 暂用余弦与缩放 BM25 分数相加，**未实现 RRF、真实 embedding、jieba 或 search_chunks 接通**。
+- `milvus` 在支持平台执行 `python -m pip install -e ".[dev,milvus]"`，再设置 `RETRIEVER=milvus`；原生 Windows 显式选择时抛 RuntimeError，提示改用 memory 或在 Docker 内运行应用。无需在本机安装 extra。
+- Milvus 默认文件为已忽略的 `data/index/milvus.db`，每个实例使用独立临时 collection，需重新索引；结束时调用实例 `close()` 删除该 collection 并关闭连接。BM25 元数据仅在内存，不支持重启恢复，意外退出可能留下 collection。本轮没有持久化恢复或大规模性能承诺。
+- Milvus 使用官方 [create_collection](https://milvus.io/api-reference/pymilvus/v3.0.x/MilvusClient/Collections/create_collection.md)、[upsert](https://milvus.io/docs/upsert-entities.md) 与 [search](https://milvus.io/api-reference/pymilvus/v2.6.x/MilvusClient/Vector/search.md) 接口；本机仅验证 Windows 错误提示，真实客户端调用待支持平台跑同组契约测试。
+
 可选开关为 `ParseDocumentInput(engine="mineru", ...)` 或 `parse_pdf(..., engine="mineru")`；默认依赖不安装 MinerU。本轮适配 [MinerU 4 本地 SDK](https://opendatalab.github.io/MinerU/usage/sdk_api/) 的 Flash/txt 模式，并通过 [Content List 渲染格式](https://opendatalab.github.io/MinerU/reference/output_files/) 保留原页码和表格原始标记；不支持的版本会记录原因并回退 PyMuPDF。表格原始标记暂不转换为二维单元格。`.env.example` 中 `PARSER` 的环境变量自动加载留待应用层实现。
 PyMuPDF 文字和表格抽取接口见 [官方 Page 文档](https://pymupdf.readthedocs.io/en/latest/page.html)。
 
@@ -114,7 +135,20 @@ PyMuPDF 文字和表格抽取接口见 [官方 Page 文档](https://pymupdf.read
 
 ## 测试与未验证项
 
-本轮验证（2026-10-25，Windows / Python 3.11.5，PyMuPDF 1.28.2，Pydantic 2.14.1）：
+第 3 轮任务 1 验证（2026-10-27，原生 Windows / Python 3.12.10，仓库 `.venv`，不使用 GPU）：
+
+```powershell
+$env:PYTEST_ADDOPTS='--basetemp=.tmp/r3-index-final -o cache_dir=.tmp/pytest-cache'
+.venv\Scripts\python.exe -m pytest -q -rs
+```
+
+- 去噪模块完成后：**53 passed, 18 skipped, 0 failed**。
+- Retriever 模块完成后及最终复跑：**62 passed, 24 skipped, 0 failed**。
+- 24 skipped = Milvus 同组参数化契约 7 项（原生 Windows 不支持）+ 引用核验占位 1 项 + 范围外工具占位 16 项。memory 契约不跳过，search_chunks 工具保持占位。
+- 首次直接运行因旧系统 pytest 临时目录权限失败：33 passed, 18 skipped, 20 errors（setup 阶段），并有旧缓存目录权限警告。用上面的环境变量换到已忽略的 `.tmp/` 后通过，不修改目录 ACL 或清理用户文件。
+- 未验证：Milvus 在 Linux/macOS/WSL 的真实运行、真实公开年报去噪效果、检索质量/性能、真实 embedding；没有下载模型或使用 GPU。详情见 [开发记录](docs/devlog/2026-10-r3-index.md)。
+
+第 2 轮历史验证（2026-10-25，Windows / Python 3.11.5，PyMuPDF 1.28.2，Pydantic 2.14.1）：
 
 - 解析模块完成后：`.venv\Scripts\python.exe -m pytest -q` → **28 passed, 21 skipped**。
 - 切块和工具接通后：同一命令 → **51 passed, 18 skipped**。
@@ -122,7 +156,7 @@ PyMuPDF 文字和表格抽取接口见 [官方 Page 文档](https://pymupdf.read
 - 已覆盖工具成功/失败结构、页码/章节/表格、稳定 ID、500–800 字切块及重叠/正文完整性、短章节隔离、损坏/缺失/加密文件、空白页、表格失败保留原文，以及 MinerU 缺失/运行失败回退与日志。
 - 切块及 `parse_document` 的 skip 已解除；剩余 18 个跳过项为检索、引用核验占位及其余 8 个工具操作各 2 个正例/异常例占位。
 
-未验证：真实安装 MinerU 的端到端运行及其本地资源依赖（适配器仅用替身测试，缺失回退已验证）、真实年报/扫描件 OCR/复杂跨页表格、多栏阅读顺序、Milvus Lite 平台支持及检索/引用核验、模型名及非思考参数、独立 RAG 页、导出、Docker 与 MCP。Python 3.11 已验证；其他 Python 版本本轮未复跑。
+未验证：真实安装 MinerU 的端到端运行及其本地资源依赖（适配器仅用替身测试，缺失回退已验证）、真实年报/扫描件 OCR/复杂跨页表格、多栏阅读顺序、Milvus Lite 实机检索、引用核验、模型名及非思考参数、独立 RAG 页、导出、Docker 与 MCP。Python 3.11 为历史验证，本轮使用 Python 3.12。
 评估计划：引用覆盖率、待核实数字占比、每章耗时及 token 用量（`scripts/eval.py` 仅入口）。
 
 ## 展示与后续

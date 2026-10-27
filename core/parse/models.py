@@ -13,6 +13,7 @@ class ParsedPage(BaseModel):
     page: int = Field(ge=1)
     text: str
     blocks: list[TextBlock] = Field(default_factory=list)
+    margin_lines: list[str] | None = None
 
 
 class Section(BaseModel):

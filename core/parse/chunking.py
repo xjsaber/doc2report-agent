@@ -6,6 +6,7 @@ import re
 
 from core.models import Chunk
 from core.parse.models import ParsedDocument, TextBlock
+from core.parse.denoise import remove_repeated_margins
 
 
 def _section_chunks(
@@ -65,6 +66,7 @@ def chunk_document(
     """
     if not 0 <= overlap < min_chars <= max_chars:
         raise ValueError("Require 0 <= overlap < min_chars <= max_chars")
+    document = remove_repeated_margins(document)
     chunks: list[Chunk] = []
     group: list[TextBlock] = []
     section: str | None = None

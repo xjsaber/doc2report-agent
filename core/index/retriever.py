@@ -1,4 +1,4 @@
-"""Backend-independent retrieval contract; Milvus Lite + BM25 is planned."""
+"""Backend-independent retrieval contract for memory and Milvus Lite."""
 
 from collections.abc import Sequence
 from typing import Protocol
@@ -8,7 +8,7 @@ from core.models import Chunk, SearchHit, SearchMode
 
 class Retriever(Protocol):
     def index_chunks(self, chunks: Sequence[Chunk]) -> None:
-        """Index source-preserving chunks."""
+        """Upsert source-preserving chunks by chunk_id; empty input is a no-op."""
         ...
 
     def search(
@@ -18,5 +18,9 @@ class Retriever(Protocol):
         top_k: int = 8,
         mode: SearchMode = "hybrid",
     ) -> list[SearchHit]:
-        """Retrieve ranked chunks, optionally scoped to documents."""
+        """Return descending scores, scoped before ranking; [] scope matches nothing.
+
+        Blank queries/empty indexes return []; invalid modes/top_k < 1 raise ValueError.
+        Scores are backend/mode-specific, not probabilities.
+        """
         ...

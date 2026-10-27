@@ -86,7 +86,13 @@ def _pymupdf_document(pdf: pymupdf.Document, path: Path, doc_id: str) -> ParsedD
     tables: list[ParsedTable] = []
     for page in pdf:
         blocks = _page_blocks(page)
-        pages.append(ParsedPage(page=page.number + 1, text=page.get_text(sort=True), blocks=blocks))
+        margin_lines = []
+        for block in page.get_text("dict", sort=True, flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]:
+            for line in block.get("lines", []):
+                if line["bbox"][3] <= page.rect.height * 0.10 or line["bbox"][1] >= page.rect.height * 0.90:
+                    margin_lines.append("".join(span["text"] for span in line["spans"]).strip())
+        pages.append(ParsedPage(page=page.number + 1, text=page.get_text(sort=True),
+                                blocks=blocks, margin_lines=margin_lines))
         tables.extend(_page_tables(page, doc_id))
     if not any(page.text.strip() for page in pages):
         logger.warning("PDF has no extractable text; OCR is not enabled: %s", path.name)

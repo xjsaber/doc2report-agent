@@ -4,6 +4,11 @@ import pymupdf
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def memory_default(monkeypatch):
+    monkeypatch.setenv("RETRIEVER", "memory")
+
+
 @pytest.fixture
 def sample_pdf(tmp_path):
     path = tmp_path / "synthetic.pdf"
