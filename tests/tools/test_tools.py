@@ -1,4 +1,5 @@
-"""Positive/error cases for v1 tools (export_report remains deferred)."""
+from pathlib import Path
+"""Positive/error cases for v1 tools including export_report."""
 
 from decimal import Decimal
 
@@ -193,7 +194,57 @@ def test_load_template_success_and_error():
     assert bad.ok is False
 
 
-@pytest.mark.skip(reason="export_report deferred to next round")
-@pytest.mark.parametrize("case", ["success", "error"])
-def test_export_report_deferred(case):
-    export_report(ExportReportInput(report_md="# t", format="md", title="t"))
+def test_export_report_md_and_docx_structure(tmp_path):
+    report_md = """# 年报分析
+
+## 公司概况
+
+公司专注软件产品与技术服务。[synthetic.pdf p2]
+
+## 财务表现
+
+营业收入为 120.5 亿元。[synthetic.pdf p4]【待核实】
+"""
+    md = export_report(
+        ExportReportInput(report_md=report_md, format="md", title="年报分析", output_dir=str(tmp_path))
+    )
+    assert md.ok and md.data
+    md_path = Path(md.data.file_path)
+    assert md_path.is_file()
+    assert "公司概况" in md_path.read_text(encoding="utf-8")
+
+    docx_res = export_report(
+        ExportReportInput(report_md=report_md, format="docx", title="年报分析", output_dir=str(tmp_path))
+    )
+    assert docx_res.ok and docx_res.data
+    docx_path = Path(docx_res.data.file_path)
+    assert docx_path.is_file()
+
+    from docx import Document
+    from docx.enum.text import WD_COLOR_INDEX
+
+    document = Document(str(docx_path))
+    texts = [p.text for p in document.paragraphs]
+    joined = "\n".join(texts)
+    assert "年报分析" in joined
+    assert "公司概况" in joined
+    assert "财务表现" in joined
+    assert "目录" in joined
+    assert "[synthetic.pdf p2]" in joined or "synthetic.pdf" in joined
+    # Heading count: title + 目录 + 2 sections + 全部引用 >= 4
+    headings = [p.text for p in document.paragraphs if p.style.name.startswith("Heading")]
+    assert len(headings) >= 3
+    highlighted = False
+    for paragraph in document.paragraphs:
+        for run in paragraph.runs:
+            if "待核实" in run.text and run.font.highlight_color == WD_COLOR_INDEX.YELLOW:
+                highlighted = True
+    assert highlighted is True
+
+
+def test_export_report_error_empty(tmp_path):
+    result = export_report(
+        ExportReportInput(report_md="   ", format="md", title="空", output_dir=str(tmp_path))
+    )
+    assert result.ok is False
+    assert result.error

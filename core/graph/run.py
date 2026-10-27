@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 from pathlib import Path
 import sys
 
 from core.index import get_retriever
 from core.qa import build_chat_model, load_dotenv_config
 from core.tools.parse_document import ParseDocumentInput, parse_document
+from core.tools.export_report import ExportReportInput, export_report
 from core.graph.workflow import run_report
 
 
@@ -59,16 +59,34 @@ def main(argv: list[str] | None = None) -> int:
     report_md = state.get("report_md") or ""
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    out_path = out_dir / f"report-{stamp}.md"
-    out_path.write_text(report_md, encoding="utf-8")
-    print(f"Wrote {out_path} ({len(report_md)} chars).")
+    title = state.get("title") or args.title or "年报分析"
+    md_res = export_report(
+        ExportReportInput(report_md=report_md, format="md", title=title, output_dir=str(out_dir))
+    )
+    docx_res = export_report(
+        ExportReportInput(report_md=report_md, format="docx", title=title, output_dir=str(out_dir))
+    )
+    if md_res.ok and md_res.data:
+        print(f"Wrote {md_res.data.file_path} ({len(report_md)} chars).")
+    else:
+        print(f"Markdown export failed: {md_res.error}", file=sys.stderr)
+    if docx_res.ok and docx_res.data:
+        print(f"Wrote {docx_res.data.file_path}")
+    else:
+        print(f"Word export failed: {docx_res.error}", file=sys.stderr)
+    # Keep export paths on state for callers.
+    paths = []
+    if md_res.ok and md_res.data:
+        paths.append(md_res.data.file_path)
+    if docx_res.ok and docx_res.data:
+        paths.append(docx_res.data.file_path)
+    state["export_paths"] = paths
     errors = state.get("errors") or []
     if errors:
         print("Completed with notes:")
         for err in errors:
             print(f"- {err}")
-    return 0
+    return 0 if md_res.ok else 5
 
 
 if __name__ == "__main__":
