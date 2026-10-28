@@ -59,8 +59,13 @@ _NUMBER_RE = re.compile(
     r"(?P<pct>\s*%)?(?:\s*(?P<unit>亿元|万元|元))?"
 )
 # Things that may sit between a label and its numbers (table column headers, year headers).
+_PCT_HEAD = r"\s*(?:[（(]\s*%\s*[）)])?"
 _FILLER_RE = re.compile(
-    r"(?:\s+|(?:19|20)\d{2}\s*年(?:度|末|初)?|本报告期末|本报告期|上年同期|上年度|本年度|本年|上年|"
+    r"(?:\s+|"
+    # Change columns of the 主要会计数据 table (longest first): 本年比上年增减(%) / 增减变动幅度(%) / 同比增减.
+    r"(?:本年|本期|本报告期)(?:末)?比上年(?:同期|度末|末)?增减" + _PCT_HEAD + r"|"
+    r"增减变动幅度" + _PCT_HEAD + r"|(?:同比)?增减" + _PCT_HEAD + r"|"
+    r"(?:19|20)\d{2}\s*年(?:度|末|初)?|本报告期末|本报告期|上年同期|上年度|本年度|本年|上年|"
     r"本期|上期|同期|期末|期初|金额|单位\s*[:：]\s*(?:人民币)?\s*(?:亿元|万元|元)|[|｜])"
 )
 _UNIT_HEADER_RE = re.compile(r"单位\s*[:：]\s*(?:人民币)?\s*(?P<unit>亿元|万元|元)")
@@ -181,6 +186,15 @@ def _hit_fields(hit: Any) -> tuple[str, str, int, str]:
     )
 
 
+_QUARTER_LABEL_RE = re.compile(r"第\s*[一二三四1-4]\s*季度|[一二三四]季度|Q[1-4]\b")
+
+
+def is_quarterly_table(text: str) -> bool:
+    """True for 分季度 tables (≥2 distinct quarter headers): their columns are quarters, not 本期/上期."""
+    labels = {re.sub(r"\s+", "", m.group(0)) for m in _QUARTER_LABEL_RE.finditer(text or "")}
+    return len(labels) >= 2
+
+
 def extract_financial_rows(hits: Iterable[Any], metrics: Iterable[str] | None = None) -> dict[str, FinancialRow]:
     """Extract the first valid row per metric from chunks (dicts, models, or plain strings)."""
     wanted = list(metrics) if metrics is not None else list(METRIC_LABELS)
@@ -189,6 +203,8 @@ def extract_financial_rows(hits: Iterable[Any], metrics: Iterable[str] | None = 
     for metric in wanted:
         labels = METRIC_LABELS[metric]
         for text, file, page, chunk_id in items:
+            if is_quarterly_table(text):
+                continue
             found = extract_row(text, labels)
             if found is None:
                 continue

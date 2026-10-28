@@ -24,7 +24,11 @@ _NUMBER_TOKEN_RE = re.compile(
     r"(?:\s*(?P<unit>亿元|万元|元))?"
 )
 _CITATION_RE = re.compile(r"\[[^\[\]]+?\s+p\d+\]")
-_CALC_MARK_RE = re.compile(r"（据第\s*(?P<page>\d+)\s*页数据计算）")
+# "（据第 13 页数据计算）" and the multi-page forms "（据第13页、第71页数据计算）" /
+# "（据第13、71页数据计算）" seen in r8 E2E.
+_CALC_MARK_RE = re.compile(
+    r"（据第\s*(?P<page>\d+)(?:\s*页)?(?:\s*[、,，和及与]\s*第?\s*\d+(?:\s*页)?)*\s*数据计算）"
+)
 _PENDING_MARK = "【待核实】"
 _MD_HEADING_RE = re.compile(r"(?m)^#{1,6}\s*")
 _LIST_BULLET_RE = re.compile(r"(?m)^\s*[\-\*•]\s+")
@@ -86,6 +90,30 @@ def strip_claim_noise(text: str, *, keep_calc_mark: bool = False) -> str:
     cleaned = _LIST_BULLET_RE.sub("", cleaned)
     cleaned = _LIST_NUMBER_RE.sub("", cleaned)
     return cleaned
+
+
+_SENTENCE_END_RE = re.compile(r"(?<=[。！？\n])")
+# Citation / pending / calc marks that a writer sometimes puts *after* the full stop
+# (e.g. "……下降0.95%。[x.pdf p13] 经公司评估……"). They belong to the previous sentence.
+_LEADING_MARKS_RE = re.compile(
+    r"^(?:[ \t]*(?:\[[^\[\]]+?\s+p\d+\]|【待核实】|（据第[^（）]{1,40}?数据计算）))+"
+)
+
+
+def split_claim_sentences(text: str) -> list[str]:
+    """Split Markdown into verification units, re-attaching trailing marks to their sentence.
+
+    Pieces stay contiguous substrings of ``text`` (callers use ``str.replace`` on them).
+    """
+    raw = _SENTENCE_END_RE.split(text or "")
+    merged: list[str] = []
+    for piece in raw:
+        match = _LEADING_MARKS_RE.match(piece)
+        if match and merged and not merged[-1].endswith("\n"):
+            merged[-1] += match.group(0)
+            piece = piece[match.end():]
+        merged.append(piece)
+    return [piece.strip() for piece in merged if piece.strip()]
 
 
 def _fraction_precision(frac: str | None) -> int:

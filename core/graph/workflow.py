@@ -9,6 +9,7 @@ import re
 
 from langgraph.graph import END, StateGraph
 
+from core.graph.audit_filter import AUDIT_PROMPT_RULE, demote_audit_boilerplate, section_needs_audit_filter
 from core.graph.state import ReportState, SectionState
 from core.index.retriever import Retriever
 from core.models import Fact, SearchHit, Source
@@ -18,6 +19,7 @@ from core.tools.search_chunks import SearchChunksInput, search_chunks
 from core.tools.templates import LoadTemplateInput, load_template
 from core.tools.verify_claim import (
     VerifyClaimInput,
+    split_claim_sentences,
     strip_claim_noise,
     verify_claim,
 )
@@ -149,6 +151,8 @@ def _write_prompt(section: SectionState) -> list[ChatMessage]:
         "并在该句末尾标注「（据第 X 页数据计算）」（X 为计算所用原文页码）。"
         "若关键数字无法在片段中确认，可先写结论并等待核验。"
     )
+    if section_needs_audit_filter(str(section.get("name") or "")):
+        system += AUDIT_PROMPT_RULE
     calc_block = f"\n\n{calc_context}\n" if calc_context else "\n"
     user = (
         f"章节：{section['name']}\n"
@@ -174,6 +178,31 @@ def _rewrite_prompt(section: SectionState, notes: Sequence[str]) -> list[ChatMes
         )
     )
     return base
+
+
+_HEADING_LINE_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+
+
+def normalize_section_markdown(name: str, raw: str) -> str:
+    """Guarantee exactly one ``## {name}`` chapter heading at the top.
+
+    r8 E2E: the writer sometimes opened with its own ``## 子标题``, which used to be
+    kept as-is, so the chapter title (e.g. 「公司概况」) vanished from md/docx.
+    Writer headings are demoted below the chapter level (``#``/``##`` -> ``###``).
+    """
+    lines = (raw or "").strip().splitlines()
+    if lines:
+        first = _HEADING_LINE_RE.match(lines[0].strip())
+        if first and first.group(2).strip().strip("#").strip() == name:
+            lines = lines[1:]
+    body: list[str] = []
+    for line in lines:
+        match = _HEADING_LINE_RE.match(line)
+        if match and len(match.group(1)) <= 2:
+            line = f"### {match.group(2)}"
+        body.append(line)
+    text = "\n".join(body).strip()
+    return f"## {name}\n\n{text}\n" if text else f"## {name}\n"
 
 
 def build_report_graph(
@@ -270,6 +299,9 @@ def build_report_graph(
                 section["chunks"] = []
                 continue
             raw_hits = tool.data.chunks if tool.data else []
+            if section_needs_audit_filter(str(section.get("name") or "")):
+                # Auditor's-report standard wording is not a company risk / conclusion.
+                raw_hits = demote_audit_boilerplate(raw_hits)
             hits = _prefer_hinted(raw_hits, hints, top_k)
             section["chunks"] = hits
             section["sources"] = [
@@ -310,9 +342,7 @@ def build_report_graph(
             except Exception as exc:  # pragma: no cover - injected fakes
                 errors.append(f"write:{section['name']}:{exc}")
                 raw = ""
-            if not raw.startswith("##"):
-                body = raw
-                raw = f"## {section['name']}\n\n{body}\n"
+            raw = normalize_section_markdown(section["name"], raw)
             section["markdown"] = raw if raw.endswith("\n") else raw + "\n"
             section["needs_verification"] = False
             section["elapsed_seconds"] = float(section.get("elapsed_seconds") or 0) + (
@@ -341,8 +371,7 @@ def build_report_graph(
                 notes.append(err or "引用校验失败")
 
             # Numeric claims: digits remaining after stripping citations / Markdown chrome.
-            for sentence in re.split(r"(?<=[。！？\n])", md):
-                piece = sentence.strip()
+            for piece in split_claim_sentences(md):
                 if not piece:
                     continue
                 if _PENDING_MARK in piece:

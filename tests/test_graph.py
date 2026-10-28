@@ -208,3 +208,41 @@ def test_graph_rewrite_only_failed_section_six_calls():
     assert int(finance.get("rewrite_count") or 0) == 1
     assert "120.5" in finance.get("markdown", "")
 
+
+
+def test_run_summary_counts_pending_and_pages():
+    from core.graph.run import build_run_summary
+
+    state = {
+        "sections": [
+            {
+                "name": "财务表现",
+                "verification_status": "supported",
+                "rewrite_count": 0,
+                "markdown": "## 财务表现\n\n营业收入 5 亿元。[a.pdf p7]\n净利润 1 亿元。[a.pdf p7]【待核实】\n",
+                "chunks": [{"page": 7}, {"page": 8}],
+                "verification_notes": [],
+                "elapsed_seconds": 1.23,
+            }
+        ],
+        "export_paths": ["output/x.docx"],
+        "errors": [],
+    }
+    summary = build_run_summary(state, timings={"total_seconds": 1.0}, chunks=3)
+    sec = summary["sections"][0]
+    assert sec["pending_marks"] == 1 and summary["pending_marks_total"] == 1
+    assert sec["cited_pages"] == [7] and sec["retrieved_pages"] == [7, 8]
+    assert summary["export_paths"] == ["output/x.docx"]
+
+
+def test_normalize_section_markdown_keeps_chapter_heading():
+    from core.graph.workflow import normalize_section_markdown
+
+    out = normalize_section_markdown("公司概况", "## 公司基本信息与主营定位\n\n正文。\n\n### 1. 小节\n内容")
+    lines = out.splitlines()
+    assert lines[0] == "## 公司概况"
+    assert "### 公司基本信息与主营定位" in lines
+    assert "### 1. 小节" in lines
+    assert sum(1 for ln in lines if ln.startswith("## ")) == 1
+    assert normalize_section_markdown("结论", "## 结论\n\n好。") == "## 结论\n\n好。\n"
+    assert normalize_section_markdown("结论", "无标题正文") == "## 结论\n\n无标题正文\n"

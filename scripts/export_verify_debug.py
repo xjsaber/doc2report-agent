@@ -13,9 +13,14 @@ sys.path.insert(0, str(ROOT))
 
 from core.qa.answer import parse_citation_markers
 from core.tools.parse_document import ParseDocumentInput, parse_document
-from core.tools.verify_claim import debug_verify_sentence
+from core.tools.verify_claim import debug_verify_sentence, split_claim_sentences, strip_claim_noise
 
 _PENDING = "【待核实】"
+
+
+def has_claim_digits(piece: str) -> bool:
+    """Same gate as the graph verify node: only sentences with digits after noise stripping."""
+    return bool(re.search(r"\d", strip_claim_noise(piece)))
 
 
 def main() -> int:
@@ -47,9 +52,10 @@ def main() -> int:
         by_chunk[chunk.chunk_id] = chunk.text
 
     rows = []
-    for sentence in re.split(r"(?<=[。！？\n])", report_md):
-        piece = sentence.strip()
+    for piece in split_claim_sentences(report_md):
         if not piece or piece.startswith("#"):
+            continue
+        if not has_claim_digits(piece):
             continue
         markers = parse_citation_markers(piece)
         evidence: list[str] = []

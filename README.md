@@ -137,11 +137,11 @@ python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf
 
 ## 测试结果
 
-本机（原生 Windows，Python 3.12.10）第 7 轮 [year-fix] 后：
+本机（原生 Windows，Python 3.12.10）第 8 轮 [finish-report] 后：
 
 ```text
-python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r7
-152 passed, 11 skipped, 0 failed
+python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r8
+171 passed, 11 skipped, 0 failed
 ```
 
 skip 均为原生 Windows 上的 Milvus Lite 契约。

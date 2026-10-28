@@ -146,3 +146,42 @@ def test_verify_numbers_ignore_bare_year_and_dates():
         chunk_lookup=lookup,
     )
     assert out.ok and out.data.status == "supported"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "营业收入 2024年 2023年 本年比上年增减 545,680,493.10 601,286,596.33 -9.25%",
+        "营业收入（元） 2024 年 2023 年 本年比上年增减(%) 545,680,493.10 601,286,596.33 -9.25%",
+        "营业收入 本期 上年同期 增减变动幅度（%） 545,680,493.10 601,286,596.33 -9.25%",
+        "营业收入\n2024年\n2023年\n本年比上年增减\n545,680,493.10\n601,286,596.33\n-9.25%",
+    ],
+)
+def test_horizontal_header_with_change_column(text):
+    row = extract_financial_rows([text])["营业收入"]
+    assert row.current == Decimal("545680493.10")
+    assert row.previous == Decimal("601286596.33")
+
+
+def test_parenthesized_negative_is_known_limitation():
+    """已知局限：括号负数（12,345,678.90）暂不支持，返回空而不是误读成正数。"""
+    assert extract_row("净利润（12,345,678.90）", METRIC_LABELS["净利润"]) is None
+
+
+QUARTERLY_P8 = (
+    "八、分季度主要财务指标\n\n单位：元\n\n第一季度\n第二季度\n第三季度\n第四季度\n\n"
+    "营业收入\n109,111,915.36\n137,720,578.61\n128,948,286.99\n169,899,712.14\n\n"
+    "归属于上市公司股东的净利润\n86,585,831.40\n-42,162,397.68\n18,897,859.99\n-35,473,535.24\n"
+)
+
+
+def test_quarterly_table_is_not_current_vs_previous():
+    """r8 E2E: p8 quarterly columns were read as 本期/上期 (营收同比 -20.77%, 净利率 79.36%)."""
+    from core.tools.financial_extract import is_quarterly_table
+    from core.tools.verify_claim import recalculate_ratio
+
+    assert is_quarterly_table(QUARTERLY_P8)
+    assert extract_financial_rows([QUARTERLY_P8], ("营业收入", "净利润")) == {}
+    assert recalculate_ratio("同比", [QUARTERLY_P8], claim="营业收入同比") is None
+    assert recalculate_ratio("净利率", [QUARTERLY_P8]) is None
+    assert not is_quarterly_table("营业收入 2024年 2023年 545,680,493.10 601,286,596.33")
