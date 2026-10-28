@@ -9,6 +9,7 @@ class SectionState(TypedDict):
     name: str
     questions: list[str]
     keywords: list[str]
+    section_hints: list[str]
     chunks: list[SearchHit]
     facts: list[Fact]
     markdown: str

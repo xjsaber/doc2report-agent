@@ -66,6 +66,7 @@ class TemplateSection(BaseModel):
     name: str
     questions: list[str]
     keywords: list[str]
+    section_hints: list[str] = Field(default_factory=list)
 
 
 class ReportTemplate(BaseModel):
