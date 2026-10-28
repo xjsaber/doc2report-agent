@@ -27,7 +27,9 @@ from core.tools.calc_financials import (
     PeriodValues,
     calc_financials,
 )
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
+
+from core.tools.financial_extract import extract_financial_rows, ratio_is_plausible
 
 _PENDING_MARK = "【待核实】"
 _CITATION_LINE_RE = re.compile(r"\[[^\[\]]+?\s+p\d+\]")
@@ -92,74 +94,42 @@ def _format_retrieve_query(section: SectionState) -> str:
 
 
 def _try_build_calc_context(section: SectionState) -> str:
-    """Best-effort: pull amounts from retrieved chunks and run calc_financials for write context."""
-    texts: list[str] = []
-    for hit in section.get("chunks") or []:
-        data = hit if isinstance(hit, dict) else hit.model_dump()
-        texts.append(str(data.get("text") or ""))
-    joined = "\n".join(texts)
-    if not joined.strip():
+    """Best-effort: extract key rows from retrieved chunks and run calc_financials for write context.
+
+    Shares ``extract_financial_rows`` with verify so both sides use one set of rules
+    (years / page numbers / percentages are never amounts; per-chunk extraction; real
+    file/page/chunk_id as sources). Implausible ratios are dropped: better nothing than
+    a wrong number the writer is told to copy.
+    """
+    hits = list(section.get("chunks") or [])
+    if not hits:
         return ""
-
-    unit_mult = {"元": Decimal("1"), "万元": Decimal("10000"), "亿元": Decimal("100000000")}
-
-    def _amount(labels: tuple[str, ...]) -> tuple[Decimal, int] | None:
-        for label in labels:
-            pattern = re.compile(
-                re.escape(label)
-                + r"[^\d]{0,12}(?P<sign>-)?(?P<num>\d{1,3}(?:,\d{3})+|\d+)(?P<frac>\.\d+)?"
-                + r"(?:\s*(?P<unit>亿元|万元|元))?"
-            )
-            match = pattern.search(joined)
-            if not match:
-                continue
-            raw = (match.group("sign") or "") + match.group("num").replace(",", "") + (match.group("frac") or "")
-            try:
-                value = Decimal(raw)
-            except InvalidOperation:
-                continue
-            unit = match.group("unit") or "元"
-            page = 1
-            for hit in section.get("chunks") or []:
-                data = hit if isinstance(hit, dict) else hit.model_dump()
-                if label in data["text"] and match.group("num") in data["text"].replace(",", ""):
-                    page = int(data["page"])
-                    break
-            return value * unit_mult[unit], page
-        return None
-
-    revenue = _amount(("营业收入", "营业总收入"))
-    cost = _amount(("营业成本",))
-    profit = _amount(("净利润",))
+    rows = extract_financial_rows(hits)
     values: dict = {}
-    if revenue is not None:
-        amount, page = revenue
-        values["营业收入"] = PeriodValues(
-            current=MetricValue(value=amount, sources=[Source(file="context", page=page, chunk_id="calc")])
+    for metric, row in rows.items():
+        source = Source(file=row.file or "unknown", page=max(1, row.page), chunk_id=row.chunk_id or "unknown")
+        previous = (
+            MetricValue(value=row.previous, sources=[source]) if row.previous is not None else None
         )
-    if cost is not None:
-        amount, page = cost
-        values["营业成本"] = PeriodValues(
-            current=MetricValue(value=amount, sources=[Source(file="context", page=page, chunk_id="calc")])
-        )
-    if profit is not None:
-        amount, page = profit
-        values["净利润"] = PeriodValues(
-            current=MetricValue(value=amount, sources=[Source(file="context", page=page, chunk_id="calc")])
-        )
-    if len(values) < 2:
+        values[metric] = PeriodValues(current=MetricValue(value=row.current, sources=[source]), previous=previous)
+    if not values:
         return ""
     result = calc_financials(CalcFinancialsInput(values=values))
     if not result.ok or result.data is None:
         return ""
-    lines = ["已用 calc_financials 根据片段数字算出的比率（写作时必须引用这些结果，禁止自行心算）："]
+    lines: list[str] = []
     for metric in result.data.metrics:
         if metric.value is None:
             continue
         pct = (metric.value * Decimal("100")).quantize(Decimal("0.01"))
-        page = metric.sources[0].page if metric.sources else 1
-        lines.append(f"- {metric.name} = {pct}% （据第 {page} 页数据计算）；公式：{metric.formula}")
-    return "\n".join(lines)
+        if not ratio_is_plausible(metric.name, pct):
+            continue
+        pages = sorted({s.page for s in metric.sources})
+        page_text = "、".join(str(p) for p in pages) if pages else "?"
+        lines.append(f"- {metric.name} = {pct}% （据第 {pages[0]} 页数据计算）；公式：{metric.formula}；所用页码：{page_text}")
+    if not lines:
+        return ""
+    return "\n".join(["已用 calc_financials 根据片段数字算出的比率（写作时必须引用这些结果，禁止自行心算）：", *lines])
 
 
 def _write_prompt(section: SectionState) -> list[ChatMessage]:

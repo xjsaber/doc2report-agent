@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from core.models import ToolMetadata, ToolResult
+from core.tools.financial_extract import extract_financial_rows, extract_row, is_year_token, ratio_is_plausible
 
 METADATA = ToolMetadata(name="verify_claim", description_zh="核验数字结论", description_en="Verify a numeric claim")
 logger = logging.getLogger(__name__)
@@ -28,7 +29,11 @@ _PENDING_MARK = "【待核实】"
 _MD_HEADING_RE = re.compile(r"(?m)^#{1,6}\s*")
 _LIST_BULLET_RE = re.compile(r"(?m)^\s*[\-\*•]\s+")
 _LIST_NUMBER_RE = re.compile(r"(?m)^\s*\d+[\.、\)]\s+")
-_YEAR_LABEL_RE = re.compile(r"20\d{2}\s*年")
+_YEAR_LABEL_RE = re.compile(r"(?<![\d,.])(?:19|20)\d{2}\s*年(?:度)?")
+# Full dates (2024年12月31日 / 2024-12-31 / 2024.12.31) are labels, not figures.
+_DATE_RE = re.compile(
+    r"(?<![\d,.])(?:19|20)\d{2}\s*(?:年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?|[-/.]\d{1,2}[-/.]\d{1,2})(?![\d])"
+)
 # Page-only tokens like "第 12 页" are not claim figures.
 _PAGE_REF_RE = re.compile(r"第\s*\d+\s*页")
 
@@ -75,6 +80,7 @@ def strip_claim_noise(text: str, *, keep_calc_mark: bool = False) -> str:
     if not keep_calc_mark:
         cleaned = _CALC_MARK_RE.sub("", cleaned)
     cleaned = _PAGE_REF_RE.sub("", cleaned)
+    cleaned = _DATE_RE.sub("", cleaned)
     cleaned = _YEAR_LABEL_RE.sub("", cleaned)
     cleaned = _MD_HEADING_RE.sub("", cleaned)
     cleaned = _LIST_BULLET_RE.sub("", cleaned)
@@ -110,7 +116,19 @@ def parse_number_token(match: re.Match[str]) -> ParsedNumber:
 def extract_parsed_numbers(text: str, *, preprocess: bool = True) -> list[ParsedNumber]:
     """Extract numeric tokens; by default strip citations / Markdown chrome first."""
     source = strip_claim_noise(text) if preprocess else (text or "")
-    return [parse_number_token(m) for m in _NUMBER_TOKEN_RE.finditer(source)]
+    out: list[ParsedNumber] = []
+    for match in _NUMBER_TOKEN_RE.finditer(source):
+        if (
+            preprocess
+            and not match.group("frac")
+            and not match.group("pct")
+            and not match.group("unit")
+            and not match.group("sign")
+            and is_year_token(match.group("num"))
+        ):
+            continue  # bare year such as "2024" is a period label, not a claim figure
+        out.append(parse_number_token(match))
+    return out
 
 
 def extract_numbers(text: str) -> list[str]:
@@ -198,23 +216,11 @@ def calc_mark_page(text: str) -> int | None:
 
 
 def _extract_labeled_amount(text: str, labels: Sequence[str]) -> Decimal | None:
-    """Find the first amount near any label (元/万元/亿元)."""
-    for label in labels:
-        pattern = re.compile(
-            re.escape(label)
-            + r"[^\d]{0,12}(?P<num>\d{1,3}(?:,\d{3})+|\d+)(?P<frac>\.\d+)?(?:\s*(?P<unit>亿元|万元|元))?"
-        )
-        match = pattern.search(text)
-        if not match:
-            continue
-        raw = match.group("num").replace(",", "") + (match.group("frac") or "")
-        try:
-            value = Decimal(raw)
-        except InvalidOperation:
-            continue
-        unit = match.group("unit") or "元"
-        return value * _UNIT_TO_YUAN.get(unit, Decimal("1"))
-    return None
+    """Current-period amount (元) of the first valid row for any label; years are never amounts."""
+    found = extract_row(text or "", labels)
+    if found is None:
+        return None
+    return found[1][0][0]
 
 
 def _extract_claimed_ratio(text: str) -> tuple[str | None, ParsedNumber | None]:
@@ -239,34 +245,53 @@ def _extract_claimed_ratio(text: str) -> tuple[str | None, ParsedNumber | None]:
     return kind, None
 
 
-def recalculate_ratio(kind: str, evidence_text: str) -> Decimal | None:
-    """Recompute a ratio from evidence text; returns percent points (e.g. 41.51 for 41.51%)."""
-    joined = evidence_text
+def _yoy_metric(claim: str) -> str:
+    return "净利润" if "净利润" in (claim or "") or "净利" in (claim or "") else "营业收入"
+
+
+def recalculate_ratio(
+    kind: str,
+    evidence_text: str | Sequence[str],
+    *,
+    claim: str = "",
+) -> Decimal | None:
+    """Recompute a ratio from evidence; returns percent points (e.g. 41.51 for 41.51%).
+
+    Uses the same structured row extraction as the write-time calc context
+    (``core.tools.financial_extract``), per evidence chunk, so a year header or a
+    neighbouring chunk's number is never read as an amount. Implausible results
+    (e.g. a gross margin beyond ±100%) are discarded and return ``None``.
+    """
+    texts = [evidence_text] if isinstance(evidence_text, str) else list(evidence_text)
     if kind == "毛利率":
-        revenue = _extract_labeled_amount(joined, ("营业收入", "营业总收入", "收入"))
-        cost = _extract_labeled_amount(joined, ("营业成本", "成本"))
-        if revenue is None or cost is None or revenue == 0:
+        rows = extract_financial_rows(texts, ("营业收入", "营业成本"))
+        revenue, cost = rows.get("营业收入"), rows.get("营业成本")
+        if revenue is None or cost is None or revenue.current <= 0:
             return None
-        return (revenue - cost) / revenue * Decimal("100")
-    if kind == "同比":
-        current = _extract_labeled_amount(joined, ("本期", "当年", "本报告期", "营业收入"))
-        previous = _extract_labeled_amount(joined, ("上期", "上年", "上年同期", "去年"))
-        if current is None or previous is None or previous == 0:
+        value = (revenue.current - cost.current) / revenue.current * Decimal("100")
+    elif kind == "同比":
+        metric = _yoy_metric(claim)
+        row = extract_financial_rows(texts, (metric,)).get(metric)
+        if row is None or row.previous is None or row.previous == 0:
             return None
-        return (current - previous) / abs(previous) * Decimal("100")
-    if kind == "净利率":
-        profit = _extract_labeled_amount(joined, ("净利润",))
-        revenue = _extract_labeled_amount(joined, ("营业收入", "营业总收入"))
-        if profit is None or revenue is None or revenue == 0:
+        value = (row.current - row.previous) / abs(row.previous) * Decimal("100")
+    elif kind == "净利率":
+        rows = extract_financial_rows(texts, ("净利润", "营业收入"))
+        profit, revenue = rows.get("净利润"), rows.get("营业收入")
+        if profit is None or revenue is None or revenue.current <= 0:
             return None
-        return profit / revenue * Decimal("100")
-    if kind == "资产负债率":
-        liabilities = _extract_labeled_amount(joined, ("总负债", "负债合计", "负债总额"))
-        assets = _extract_labeled_amount(joined, ("总资产", "资产总计", "资产总额"))
-        if liabilities is None or assets is None or assets == 0:
+        value = profit.current / revenue.current * Decimal("100")
+    elif kind == "资产负债率":
+        rows = extract_financial_rows(texts, ("总负债", "总资产"))
+        liabilities, assets = rows.get("总负债"), rows.get("总资产")
+        if liabilities is None or assets is None or assets.current <= 0:
             return None
-        return liabilities / assets * Decimal("100")
-    return None
+        value = liabilities.current / assets.current * Decimal("100")
+    else:
+        return None
+    if not ratio_is_plausible(kind, value):
+        return None
+    return value
 
 
 def verify_calculated_sentence(claim: str, evidence_texts: Sequence[str]) -> tuple[Literal["supported", "mismatch", "not_found"], str | None]:
@@ -274,8 +299,7 @@ def verify_calculated_sentence(claim: str, evidence_texts: Sequence[str]) -> tup
     kind, claimed = _extract_claimed_ratio(claim)
     if kind is None or claimed is None:
         return "not_found", "calculated claim missing ratio or percent"
-    joined = "\n".join(evidence_texts)
-    recomputed = recalculate_ratio(kind, joined)
+    recomputed = recalculate_ratio(kind, list(evidence_texts), claim=claim)
     if recomputed is None:
         return "not_found", f"unable to recalculate {kind} from evidence"
     rounded = _round_to_precision(recomputed, claimed.precision)
