@@ -41,11 +41,17 @@ def _start_streamlit(script: Path, port: int) -> subprocess.Popen:
         "--browser.gatherUsageStats",
         "false",
     ]
+    # Log to a file under output/ (gitignored): an unread PIPE can fill up and stall
+    # Streamlit during the long report run, and a crash would leave no trace.
+    log_dir = REPO / "output"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log = open(log_dir / f"streamlit-{port}.log", "w", encoding="utf-8")  # noqa: SIM115
+    env.setdefault("PYTHONUNBUFFERED", "1")
     return subprocess.Popen(
         cmd,
         cwd=str(REPO),
         env=env,
-        stdout=subprocess.PIPE,
+        stdout=log,
         stderr=subprocess.STDOUT,
     )
 
@@ -101,6 +107,57 @@ def _wait_ingest_documents(page, timeout: float = 600.0) -> None:
     raise RuntimeError("Ingest did not populate sidebar documents in time")
 
 
+_IDLE_JS = """
+() => {
+  const status = document.querySelector('[data-testid="stStatusWidget"]');
+  const running = status && status.offsetParent !== null && /Running|Stop|运行/i.test(status.innerText || "");
+  const stopBtn = Array.from(document.querySelectorAll('header button, [data-testid="stToolbar"] button'))
+    .some(b => /^\\s*Stop\\s*$/i.test(b.innerText || ""));
+  const stale = document.querySelectorAll('[data-stale="true"], .stale-element').length > 0;
+  return !running && !stopBtn && !stale;
+}
+"""
+
+
+def wait_idle(page, timeout: float = 120.0, settle_ms: int = 1500) -> None:
+    """Wait until Streamlit shows no running indicator (Stop / spinner) and no stale elements.
+
+    Requires the idle state to hold for ``settle_ms`` so a rerun that starts right after
+    the first idle check is not captured half-way.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if page.evaluate(_IDLE_JS):
+            page.wait_for_timeout(settle_ms)
+            if page.evaluate(_IDLE_JS):
+                return
+        page.wait_for_timeout(500)
+    raise RuntimeError("Streamlit still running (Stop indicator / stale elements) — not capturing")
+
+
+def _scroll_main_to(page, text: str, margin: int = 24) -> None:
+    """Scroll Streamlit's main scroll container so the heading ``text`` sits at the top."""
+    heading = page.get_by_role("heading", name=text).first
+    heading.wait_for(timeout=60_000)
+    heading.evaluate(
+        """(el, margin) => {
+            el.scrollIntoView({block: 'start'});
+            let node = el.parentElement;
+            while (node && node !== document.body) {
+                const style = getComputedStyle(node);
+                if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) {
+                    node.scrollTop = Math.max(0, node.scrollTop - margin);
+                    break;
+                }
+                node = node.parentElement;
+            }
+            window.scrollBy(0, -margin);
+        }""",
+        margin,
+    )
+    page.wait_for_timeout(600)
+
+
 def capture_qa(pdf: Path, port: int = 8501) -> None:
     from playwright.sync_api import sync_playwright
 
@@ -117,6 +174,7 @@ def capture_qa(pdf: Path, port: int = 8501) -> None:
             _sidebar_upload(page, pdf)
             page.get_by_role("button", name="解析并入库").click()
             _wait_ingest_documents(page, timeout=600.0)
+            wait_idle(page)
 
             page.get_by_label("提问").fill("公司的主营业务是什么？")
             page.get_by_role("button", name="检索并回答").click()
@@ -124,13 +182,13 @@ def capture_qa(pdf: Path, port: int = 8501) -> None:
             if page.get_by_text("检索未找到相关依据", exact=False).count():
                 page.screenshot(path=str(IMAGES / "qa-cited.png"), full_page=True)
                 raise RuntimeError("Cited capture got a refuse message")
-            page.wait_for_timeout(1500)
+            wait_idle(page)
             page.screenshot(path=str(IMAGES / "qa-cited.png"), full_page=True)
 
             page.get_by_label("提问").fill("如何移民火星并在那里开设咖啡馆？")
             page.get_by_role("button", name="检索并回答").click()
             page.get_by_text("检索未找到相关依据", exact=False).wait_for(timeout=300_000)
-            page.wait_for_timeout(1000)
+            wait_idle(page)
             if page.get_by_text("命中原文", exact=True).count():
                 page.screenshot(path=str(IMAGES / "qa-refuse.png"), full_page=True)
                 raise RuntimeError("Refuse UI still shows「命中原文」; aborting")
@@ -159,16 +217,18 @@ def capture_report(pdf: Path, port: int = 8502) -> None:
 
             _sidebar_upload(page, pdf)
             page.get_by_role("button", name="生成报告").click()
-            page.wait_for_timeout(8000)
-            page.screenshot(path=str(IMAGES / "report-progress.png"), full_page=True)
-
             page.get_by_text("报告预览", exact=False).wait_for(timeout=900_000)
-            page.wait_for_timeout(2000)
-            expanders = page.locator("[data-testid='stExpander']")
-            if expanders.count() > 0:
-                expanders.first.click()
-                page.wait_for_timeout(800)
-            page.screenshot(path=str(IMAGES / "report-preview.png"), full_page=True)
+            wait_idle(page, timeout=300.0)
+            # Progress shot after the run finished: 100% bar + per-chapter verify status,
+            # so no Stop / running indicator is captured.
+            # Start at the page title so neither the title nor 章节进度 is cut in half.
+            _scroll_main_to(page, "年报分析报告生成")
+            wait_idle(page)
+            page.screenshot(path=str(IMAGES / "report-progress.png"))
+            # Start the shot at a chapter heading, not half a line into the page.
+            _scroll_main_to(page, "公司概况")
+            wait_idle(page)
+            page.screenshot(path=str(IMAGES / "report-preview.png"))
             browser.close()
     finally:
         proc.terminate()

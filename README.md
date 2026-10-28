@@ -6,7 +6,7 @@
 
 ## 截图
 
-以下为真实 Streamlit 界面截图（`scripts/screenshots.py` + Playwright 驱动上传/入库/提问/生成；无摆拍文案）。Word 打开图本轮不拍，生成的 `.docx` 留在本地 `output/`（不入库）。
+以下为真实 Streamlit 界面截图（`scripts/screenshots.py` + Playwright 驱动上传/入库/提问/生成，等运行结束再截；无摆拍文案；第 8 轮重拍）。Word 打开图本轮不拍，生成的 `.docx` 留在本地 `output/`（不入库）。
 
 ### 报告生成
 
@@ -137,11 +137,11 @@ python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf
 
 ## 测试结果
 
-本机（原生 Windows，Python 3.12.10）第 8 轮 [finish-report] 后：
+本机（原生 Windows，Python 3.12.10）第 8 轮 [polish] 后：
 
 ```text
 python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r8
-171 passed, 11 skipped, 0 failed
+174 passed, 11 skipped, 0 failed
 ```
 
 skip 均为原生 Windows 上的 Milvus Lite 契约。

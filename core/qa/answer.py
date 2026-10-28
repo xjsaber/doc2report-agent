@@ -238,3 +238,12 @@ def answer_question(
             message=error,
         )
     return AnswerResult(question=query, answer=raw, citations=citations)
+
+
+def split_cited_citations(answer: str | None, citations: Sequence[Citation]) -> tuple[list[Citation], list[Citation]]:
+    """Split hits into (cited by the answer's [文件 p页] markers, not cited); order kept within each."""
+    markers = set(parse_citation_markers(answer or ""))
+    cited = [c for c in citations if (c.file, int(c.page)) in markers]
+    uncited = [c for c in citations if (c.file, int(c.page)) not in markers]
+    return cited, uncited
+

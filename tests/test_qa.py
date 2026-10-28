@@ -173,3 +173,17 @@ def test_refuse_question_absent_from_report():
     assert "依据" in (result.message or "")
     assert fake.calls == []
 
+
+
+def test_split_cited_citations_orders_cited_first():
+    from core.qa.answer import Citation, split_cited_citations
+
+    hits = [
+        Citation(file="a.pdf", page=19, chunk_id="c19", text="x", score=0.9, doc_id="d"),
+        Citation(file="a.pdf", page=89, chunk_id="c89", text="y", score=0.8, doc_id="d"),
+        Citation(file="a.pdf", page=28, chunk_id="c28", text="z", score=0.7, doc_id="d"),
+    ]
+    cited, uncited = split_cited_citations("主营 RFID。[a.pdf p89] 产品线。[a.pdf p28]", hits)
+    assert [c.page for c in cited] == [89, 28]
+    assert [c.page for c in uncited] == [19]
+    assert split_cited_citations(None, hits) == ([], hits)

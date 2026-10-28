@@ -17,7 +17,7 @@
 
 ## 修前 / 修后（基于上轮实跑报告 + 新核验逻辑离线重放）
 - 修前（第 5 轮实跑）：五章 `verification_status=mismatch`，全文大量【待核实】（见 `docs/devlog/2026-10-r5-e2e.md`）。
-- 修后离线重放数字见笔记本跑 `python scripts/export_verify_debug.py` 的 summary（写入本段下方「实跑补充」）；完整 graph 重跑留到 [retrieve-fix]。
+- 修后离线重放数字当轮未补录；完整 graph 重跑的观察见 `2026-10-r6-retrieve-fix.md`，r8 重跑见 `2026-10-r8-finish-report.md`。（r8 [polish] 删除原「实跑补充」占位。）
 
 ## 人工需要确认什么
 - 计算句标记「（据第 X 页数据计算）」依赖模型遵从提示；若模型漏标，verify 仍按普通数字句处理。
