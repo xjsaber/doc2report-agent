@@ -6,15 +6,19 @@
 
 ## 截图
 
-> 截图见 [`docs/images/`](docs/images/)。第 5 轮实跑后补齐；若某张缺失，见下方「已知限制」。
+以下为真实 Streamlit 界面截图（`scripts/screenshots.py` + Playwright 驱动上传/入库/提问/生成；无摆拍文案）。Word 打开图本轮不拍，生成的 `.docx` 留在本地 `output/`（不入库）。
 
-| 场景 | 文件 |
-| --- | --- |
-| 报告页生成进度 | `docs/images/report-progress.png` |
-| 报告预览（展开引用） | `docs/images/report-preview.png` |
-| Word 打开效果 | `docs/images/word-open.png`（可能需人工补拍） |
-| 问答页有引用回答 | `docs/images/qa-cited.png` |
-| 问答页拒答 | `docs/images/qa-refuse.png` |
+### 报告生成
+
+![报告生成进度](docs/images/report-progress.png)
+
+![报告预览](docs/images/report-preview.png)
+
+### 独立问答
+
+![有引用回答](docs/images/qa-cited.png)
+
+![拒答（不展示被滤掉的片段）](docs/images/qa-refuse.png)
 
 ## 架构
 
@@ -133,24 +137,24 @@ python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf
 
 ## 测试结果
 
-本机（原生 Windows，Python 3.12.10）第 6 轮任务 2 [retrieve-fix] 后：
+本机（原生 Windows，Python 3.12.10）第 6 轮任务 3 [screens] 后：
 
 ```text
 python -m pytest -q -rs --basetemp=.tmp/pytest/basetemp
-129 passed, 11 skipped, 0 failed
+131 passed, 11 skipped, 0 failed
 ```
 
 skip 均为原生 Windows 上的 Milvus Lite 契约。
 
 ## 已知限制
 
-- Word 打开效果截图（`docs/images/word-open.png`）本轮未能无头稳定导出，需人工补拍（勿含用户名/路径/Key）。
-- 第 5 轮实跑五章核验曾全部 mismatch；第 6 轮 [verify-fix] 已改数值比较与噪声剥离（见 `docs/devlog/2026-10-r6-verify-fix.md`），完整年报重跑见后续 [retrieve-fix]。
+- Word 打开效果截图本轮按评审要求不拍；请直接打开 `output/` 中本轮生成的 `.docx`（不入库）。
+- 第 5 轮实跑五章核验曾全部 mismatch；第 6 轮 [verify-fix]/[retrieve-fix] 已修（见 `docs/devlog/`）。
 
 - 原生 Windows 不跑 Milvus Lite；请用 memory 或 Docker/WSL。
 - `MIN_VECTOR_SCORE=0.35` 仍待真实年报调参。
 - 模板 v1 仅「年报分析」一种。
-- 本地 embedding 首次需下载模型权重（不入库）。
+- 本地 embedding **不会**在运行时静默联网：缺模型时请显式执行 `python -m core.index.embeddings --download-model`，或给 CLI 加 `--download-model` / 设置 `EMBEDDING_ALLOW_DOWNLOAD=1`（权重不入库）。
 - 不提交 PDF、`.env`、密钥、模型文件、`output/` 与生成报告。
 
 ## v2 计划

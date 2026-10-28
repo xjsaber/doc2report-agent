@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -20,9 +21,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--title", default="", help="Optional report title override.")
     parser.add_argument("--out-dir", default="output", help="Directory for Markdown output (gitignored).")
     parser.add_argument("--top-k", type=int, default=6)
+    parser.add_argument(
+        "--download-model",
+        action="store_true",
+        help="Explicitly download the local embedding model if missing from cache.",
+    )
     args = parser.parse_args(argv)
 
     load_dotenv_config()
+    if args.download_model:
+        os.environ["EMBEDDING_ALLOW_DOWNLOAD"] = "1"
     pdf_path = Path(args.pdf).expanduser().resolve()
     if not pdf_path.is_file():
         print(f"PDF not found: {pdf_path}", file=sys.stderr)

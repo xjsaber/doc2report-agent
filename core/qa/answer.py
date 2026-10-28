@@ -218,10 +218,12 @@ def answer_question(
     ).strip()
 
     if REFUSAL_PHRASE in raw:
+        # Do not surface retrieved passages as「命中原文」on refusal —
+        # filtered-out hits are already dropped; clearing avoids implying support.
         return AnswerResult(
             question=query,
             answer=None,
-            citations=citations,
+            citations=[],
             refused=True,
             message=REFUSAL_PHRASE,
         )
@@ -231,7 +233,7 @@ def answer_question(
         return AnswerResult(
             question=query,
             answer=None,
-            citations=citations,
+            citations=[],
             refused=True,
             message=error,
         )

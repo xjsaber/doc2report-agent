@@ -104,6 +104,7 @@ def test_fabricated_citation_refused():
     result = answer_question("主营业务", retriever=retriever, chat_model=fake)
     assert result.refused is True
     assert result.answer is None
+    assert result.citations == []
     assert "不在本次检索" in (result.message or "") or "拒绝" in (result.message or "")
     assert fake.calls  # model was called; post-check refused
 
@@ -115,6 +116,7 @@ def test_missing_citation_refused():
     result = answer_question("主营业务", retriever=retriever, chat_model=fake)
     assert result.refused is True
     assert result.answer is None
+    assert result.citations == []
     assert "引用" in (result.message or "")
 
 
@@ -127,6 +129,7 @@ def test_model_self_refusal_phrase():
     assert result.refused is True
     assert result.answer is None
     assert result.message == REFUSAL_PHRASE
+    assert result.citations == []
     assert fake.calls
 
 

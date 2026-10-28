@@ -88,20 +88,29 @@ def main() -> None:
         )
         if result.refused:
             st.warning(result.message or "无法回答")
+            st.caption("拒答时不展示被相关性门槛滤掉或未采用的片段，避免误当作「命中原文」。")
         elif result.retrieval_only:
             st.info(result.message or "仅检索结果")
+            if result.citations:
+                st.subheader("命中原文")
+                for citation in result.citations:
+                    with st.expander(f"{citation.label}  score={citation.score:.4f}"):
+                        if citation.section:
+                            st.caption(f"章节：{citation.section} · doc_id={citation.doc_id}")
+                        else:
+                            st.caption(f"doc_id={citation.doc_id}")
+                        st.write(citation.text)
         else:
             st.markdown(result.answer or "")
-
-        if result.citations:
-            st.subheader("命中原文")
-            for citation in result.citations:
-                with st.expander(f"{citation.label}  score={citation.score:.4f}"):
-                    if citation.section:
-                        st.caption(f"章节：{citation.section} · doc_id={citation.doc_id}")
-                    else:
-                        st.caption(f"doc_id={citation.doc_id}")
-                    st.write(citation.text)
+            if result.citations:
+                st.subheader("命中原文")
+                for citation in result.citations:
+                    with st.expander(f"{citation.label}  score={citation.score:.4f}"):
+                        if citation.section:
+                            st.caption(f"章节：{citation.section} · doc_id={citation.doc_id}")
+                        else:
+                            st.caption(f"doc_id={citation.doc_id}")
+                        st.write(citation.text)
 
 
 if __name__ == "__main__":
