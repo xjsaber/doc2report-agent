@@ -16,7 +16,18 @@ from core.qa.answer import parse_citation_markers, validate_answer_citations, Ci
 from core.qa.llm import ChatMessage, ChatModel
 from core.tools.search_chunks import SearchChunksInput, search_chunks
 from core.tools.templates import LoadTemplateInput, load_template
-from core.tools.verify_claim import VerifyClaimInput, verify_claim
+from core.tools.verify_claim import (
+    VerifyClaimInput,
+    strip_claim_noise,
+    verify_claim,
+)
+from core.tools.calc_financials import (
+    CalcFinancialsInput,
+    MetricValue,
+    PeriodValues,
+    calc_financials,
+)
+from decimal import Decimal, InvalidOperation
 
 _PENDING_MARK = "【待核实】"
 _CITATION_LINE_RE = re.compile(r"\[[^\[\]]+?\s+p\d+\]")
@@ -73,6 +84,78 @@ def _format_retrieve_query(section: SectionState) -> str:
     return " ".join(parts)
 
 
+
+def _try_build_calc_context(section: SectionState) -> str:
+    """Best-effort: pull amounts from retrieved chunks and run calc_financials for write context."""
+    texts: list[str] = []
+    for hit in section.get("chunks") or []:
+        data = hit if isinstance(hit, dict) else hit.model_dump()
+        texts.append(str(data.get("text") or ""))
+    joined = "\n".join(texts)
+    if not joined.strip():
+        return ""
+
+    unit_mult = {"元": Decimal("1"), "万元": Decimal("10000"), "亿元": Decimal("100000000")}
+
+    def _amount(labels: tuple[str, ...]) -> tuple[Decimal, int] | None:
+        for label in labels:
+            pattern = re.compile(
+                re.escape(label)
+                + r"[^\d]{0,12}(?P<sign>-)?(?P<num>\d{1,3}(?:,\d{3})+|\d+)(?P<frac>\.\d+)?"
+                + r"(?:\s*(?P<unit>亿元|万元|元))?"
+            )
+            match = pattern.search(joined)
+            if not match:
+                continue
+            raw = (match.group("sign") or "") + match.group("num").replace(",", "") + (match.group("frac") or "")
+            try:
+                value = Decimal(raw)
+            except InvalidOperation:
+                continue
+            unit = match.group("unit") or "元"
+            page = 1
+            for hit in section.get("chunks") or []:
+                data = hit if isinstance(hit, dict) else hit.model_dump()
+                if label in data["text"] and match.group("num") in data["text"].replace(",", ""):
+                    page = int(data["page"])
+                    break
+            return value * unit_mult[unit], page
+        return None
+
+    revenue = _amount(("营业收入", "营业总收入"))
+    cost = _amount(("营业成本",))
+    profit = _amount(("净利润",))
+    values: dict = {}
+    if revenue is not None:
+        amount, page = revenue
+        values["营业收入"] = PeriodValues(
+            current=MetricValue(value=amount, sources=[Source(file="context", page=page, chunk_id="calc")])
+        )
+    if cost is not None:
+        amount, page = cost
+        values["营业成本"] = PeriodValues(
+            current=MetricValue(value=amount, sources=[Source(file="context", page=page, chunk_id="calc")])
+        )
+    if profit is not None:
+        amount, page = profit
+        values["净利润"] = PeriodValues(
+            current=MetricValue(value=amount, sources=[Source(file="context", page=page, chunk_id="calc")])
+        )
+    if len(values) < 2:
+        return ""
+    result = calc_financials(CalcFinancialsInput(values=values))
+    if not result.ok or result.data is None:
+        return ""
+    lines = ["已用 calc_financials 根据片段数字算出的比率（写作时必须引用这些结果，禁止自行心算）："]
+    for metric in result.data.metrics:
+        if metric.value is None:
+            continue
+        pct = (metric.value * Decimal("100")).quantize(Decimal("0.01"))
+        page = metric.sources[0].page if metric.sources else 1
+        lines.append(f"- {metric.name} = {pct}% （据第 {page} 页数据计算）；公式：{metric.formula}")
+    return "\n".join(lines)
+
+
 def _write_prompt(section: SectionState) -> list[ChatMessage]:
     blocks: list[str] = []
     for index, hit in enumerate(section["chunks"], start=1):
@@ -81,16 +164,21 @@ def _write_prompt(section: SectionState) -> list[ChatMessage]:
             f"[{index}] 文件={data['file']} 页码={data['page']} chunk_id={data['chunk_id']}\n{data['text']}"
         )
     context = "\n\n".join(blocks) if blocks else "（无检索片段）"
+    calc_context = _try_build_calc_context(section)  # type: ignore[arg-type]
     system = (
         "你是年报分析写作者。只根据检索片段撰写该章节；"
         "每条含事实的句子后必须标注 [文件名 p页码]；"
         "不得编造片段中没有的数字或结论。"
-        f"若关键数字无法在片段中确认，可先写结论并等待核验。"
+        "同比、毛利率、净利率、资产负债率等比率禁止自行心算，必须使用写作上下文中 calc_financials 的结果，"
+        "并在该句末尾标注「（据第 X 页数据计算）」（X 为计算所用原文页码）。"
+        "若关键数字无法在片段中确认，可先写结论并等待核验。"
     )
+    calc_block = f"\n\n{calc_context}\n" if calc_context else "\n"
     user = (
         f"章节：{section['name']}\n"
         f"需要回答的问题：{'；'.join(section['questions'])}\n\n"
-        f"检索片段：\n{context}\n\n"
+        f"检索片段：\n{context}"
+        f"{calc_block}\n"
         "请输出该章节 Markdown 正文（不要重复一级标题）。"
     )
     return [ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)]
@@ -222,12 +310,14 @@ def build_report_graph(
                 status = "not_found"
                 notes.append(err or "引用校验失败")
 
-            # Numeric claims: check each sentence that contains digits.
+            # Numeric claims: digits remaining after stripping citations / Markdown chrome.
             for sentence in re.split(r"(?<=[。！？\n])", md):
                 piece = sentence.strip()
-                if not piece or not re.search(r"\d", piece):
+                if not piece:
                     continue
                 if _PENDING_MARK in piece:
+                    continue
+                if not re.search(r"\d", strip_claim_noise(piece)):
                     continue
                 markers = parse_citation_markers(piece)
                 chunk_ids: list[str] = []
