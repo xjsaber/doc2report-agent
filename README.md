@@ -38,87 +38,79 @@ flowchart LR
     Index --> QA[独立 RAG 问答页]
 ```
 
-## 安装
+## 快速开始
 
-需要 Python 3.11+。
+需要 Python 3.11+（本机实测 3.12.10）。以下命令均在仓库根目录执行。
 
-**Windows cmd**
+样本：自行下载一份公开上市公司年报 PDF，放到 `data/samples/`（该目录与 `*.pdf` 已 gitignore，不入库）。下文以 `data/samples/public-annual-report-2024.pdf` 为例。
 
-```bat
-cd /d path\to\doc2report-agent
+### Windows（PowerShell）
+
+```powershell
 python -m venv .venv
-.venv\Scripts\activate.bat
+.\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 python -m pip install -e ".[dev,qa,embedding]"
-copy .env.example .env
-REM 编辑 .env：填入 API_KEY（勿提交）
+Copy-Item .env.example .env
+# 编辑 .env：填入 API_KEY，并把 RETRIEVER 改为 memory（原生 Windows 无 Milvus Lite）
+
+# 首次使用显式下载本地向量模型（权重不入库；运行时不会静默联网）
+python -m core.index.embeddings --download-model
 ```
 
-**Linux / WSL**
+### Linux / WSL / macOS
 
 ```bash
-cd /path/to/doc2report-agent
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install -e ".[dev,qa,embedding]"
+pip install -e ".[dev,qa,embedding,milvus]"
 cp .env.example .env
-# 编辑 .env：填入 API_KEY（勿提交）
+# 编辑 .env：填入 API_KEY；RETRIEVER=milvus（默认）或 memory
+
+python -m core.index.embeddings --download-model
 ```
 
-可选：Linux/macOS/WSL/Docker 下 `pip install -e ".[milvus]"` 并设置 `RETRIEVER=milvus`。原生 Windows 请用 `RETRIEVER=memory`。
+### `.env` 示例
 
-## 启动
-
-### 独立问答页
-
-**Windows cmd**
-
-```bat
-.venv\Scripts\activate.bat
-streamlit run app\rag.py
+```dotenv
+BASE_URL=https://api.deepseek.com
+API_KEY=<你的 Key，勿提交>
+MODEL=deepseek-flash
+# Windows 用 memory；Linux/WSL/macOS 可用 milvus
+RETRIEVER=memory
+EMBEDDING_BACKEND=local
+EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+EMBED_DEVICE=
+MIN_VECTOR_SCORE=0.35
 ```
 
-**Linux / WSL**
+### 三个入口
+
+| 入口 | Windows | Linux / WSL / macOS |
+| --- | --- | --- |
+| 报告生成页 | `streamlit run app\report.py` | `streamlit run app/report.py` |
+| 独立问答页 | `streamlit run app\rag.py` | `streamlit run app/rag.py` |
+| 命令行 | `python -m core.graph.run --pdf data\samples\public-annual-report-2024.pdf --download-model` | `python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf --download-model` |
+
+- 命令行成功后，在 `output/`（已 gitignore）写出 `.md` 与 `.docx`。
+- 加 `--summary-json output/run-summary.json` 可导出逐章核验状态、【待核实】句数和耗时。
+- `--download-model` 只在缺模型时下载；已缓存可省略。
+- 未配置 `API_KEY` 时，解析入库后退出并提示。
+
+### 运行测试
+
+Windows（避开系统 Temp 下 pytest 目录的权限问题，每次用新的 basetemp）：
+
+```powershell
+python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-<新目录名>
+```
+
+Linux：
 
 ```bash
-source .venv/bin/activate
-streamlit run app/rag.py
+python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目录名>
 ```
-
-### 报告生成页
-
-**Windows cmd**
-
-```bat
-.venv\Scripts\activate.bat
-streamlit run app\report.py
-```
-
-**Linux / WSL**
-
-```bash
-source .venv/bin/activate
-streamlit run app/report.py
-```
-
-### 命令行生成报告
-
-**Windows cmd**
-
-```bat
-.venv\Scripts\activate.bat
-python -m core.graph.run --pdf data\samples\public-annual-report-2024.pdf
-```
-
-**Linux / WSL**
-
-```bash
-source .venv/bin/activate
-python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf
-```
-
-成功后在 `output/`（已 gitignore）写出 `.md` 与 `.docx`。未配置 `API_KEY` 时解析入库后退出并提示。
 
 ## 配置项
 
@@ -137,25 +129,46 @@ python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf
 
 ## 测试结果
 
-本机（原生 Windows，Python 3.12.10）第 8 轮 [polish] 后：
+两套环境均为真实运行结果（第 8 轮 [readme-v1prep] 最终代码）：
 
-```text
-python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r8
-174 passed, 11 skipped, 0 failed
-```
+| 环境 | 命令 | 结果 |
+| --- | --- | --- |
+| 原生 Windows 11 家庭版 10.0.26300，Python 3.12.10，PowerShell 5.1 | `python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r8g` | 174 passed, 11 skipped, 0 failed |
+| Linux（Debian 13，Python 3.12.15，含 milvus 依赖：pymilvus 2.6.17 + milvus-lite 2.5.1） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-r8-linux2` | 185 passed, 0 skipped, 0 failed |
 
-skip 均为原生 Windows 上的 Milvus Lite 契约。
+Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）；Linux 上这 11 个测试实际运行并通过。
 
-## 已知限制
+### 端到端实测（仅本机一次运行，非基准）
 
-- Word 打开效果截图本轮按评审要求不拍；请直接打开 `output/` 中本轮生成的 `.docx`（不入库）。
-- 第 5 轮实跑五章核验曾全部 mismatch；第 6 轮 [verify-fix]/[retrieve-fix] 已修（见 `docs/devlog/`）。
+- 环境：原生 Windows 11、Python 3.12.10、NVIDIA RTX 3050 Laptop GPU（torch 2.6.0+cu124，嵌入走 CUDA）、`MODEL=deepseek-flash`、`RETRIEVER=memory`。
+- 样本：一份公开年报 PDF（约 4.5 MB）。
+- 命令：`python -m core.graph.run --pdf … --summary-json …`
+- 时间：2026-10-28 23:35（UTC+8）。
 
-- 原生 Windows 不跑 Milvus Lite；请用 memory 或 Docker/WSL。
-- `MIN_VECTOR_SCORE=0.35` 仍待真实年报调参。
-- 模板 v1 仅「年报分析」一种。
-- 本地 embedding **不会**在运行时静默联网：缺模型时请显式执行 `python -m core.index.embeddings --download-model`，或给 CLI 加 `--download-model` / 设置 `EMBEDDING_ALLOW_DOWNLOAD=1`（权重不入库）。
-- 不提交 PDF、`.env`、密钥、模型文件、`output/` 与生成报告。
+| 章节 | 核验 | 重写 | 【待核实】句数 | 耗时 (s) |
+| --- | --- | --- | --- | --- |
+| 公司概况 | supported | 0 | 0 | 12.2 |
+| 主营业务 | supported | 1 | 2 | 42.1 |
+| 财务表现 | supported | 1 | 3 | 62.8 |
+| 风险因素 | supported | 0 | 0 | 17.5 |
+| 结论 | supported | 0 | 0 | 16.5 |
+
+各阶段耗时：解析 82.4 s，入库（嵌入）47.6 s，LangGraph 五节点 161.7 s，总计 292.0 s。模型输出有随机性，换机器、换模型或重跑，数字都会变化。
+
+## 已知局限
+
+- **Milvus Lite 不支持原生 Windows**：Windows 请设 `RETRIEVER=memory`（`.env.example` 默认写的是 `milvus`，复制后要改），或改在 Docker / WSL / Linux / macOS 下运行。
+- **核验粒度**：含数字的句子会把数字与引用页原文逐个比对；不含数字的句子只校验引用（文件、页码存在，且该页在本章检索到的片段内），不判断语义是否正确。
+- **比率只算四类**：同比增速（营业收入、净利润）、毛利率、净利率、资产负债率。其余指标不做代码计算。
+- **毛利率可能缺失**：「分行业 / 分产品」表若以列标题形式排列（营业收入、营业成本各占一列），目前抽不出「营业成本」行，因此可能算不出毛利率，报告里不出现该项。
+- **括号负数不支持**：抽取时不会把 `(1,234.56)` 这类会计括号写法识别为负数。
+- `MIN_VECTOR_SCORE=0.35` 目前只用一份公开年报调过，仍需更多样本调参。
+- 写作模型偶尔会把内部工具名（如 calc_financials）写进正文，需人工通读。
+- 模板 v1 只有「年报分析」一种。
+- 本地 embedding **不会**在运行时静默联网：缺模型时请显式执行 `python -m core.index.embeddings --download-model`，或给 CLI 加 `--download-model`，或设置 `EMBEDDING_ALLOW_DOWNLOAD=1`。模型权重不入库。
+- Word 文档的打开效果不截图，请直接打开 `output/` 中生成的 `.docx`（不入库）。
+- 不提交 PDF、`.env`、密钥、模型文件、`output/` 与生成的报告。
+- 核心函数入口与签名见 [docs/core-api.md](docs/core-api.md)。
 
 ## v2 计划
 
