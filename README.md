@@ -133,11 +133,11 @@ python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf
 
 ## 测试结果
 
-本机（原生 Windows，Python 3.12.10）第 6 轮任务 1 [verify-fix] 后：
+本机（原生 Windows，Python 3.12.10）第 6 轮任务 2 [retrieve-fix] 后：
 
 ```text
 python -m pytest -q -rs --basetemp=.tmp/pytest/basetemp
-126 passed, 11 skipped, 0 failed
+129 passed, 11 skipped, 0 failed
 ```
 
 skip 均为原生 Windows 上的 Milvus Lite 契约。

@@ -33,11 +33,17 @@ _PENDING_MARK = "【待核实】"
 _CITATION_LINE_RE = re.compile(r"\[[^\[\]]+?\s+p\d+\]")
 
 
-def _empty_section(name: str, questions: list[str], keywords: list[str]) -> SectionState:
+def _empty_section(
+    name: str,
+    questions: list[str],
+    keywords: list[str],
+    section_hints: list[str] | None = None,
+) -> SectionState:
     return SectionState(
         name=name,
         questions=questions,
         keywords=keywords,
+        section_hints=list(section_hints or []),
         chunks=[],
         facts=[],
         markdown="",
@@ -218,7 +224,12 @@ def build_report_graph(
             }
         template = loaded.data.template
         sections = [
-            _empty_section(sec.name, list(sec.questions), list(sec.keywords))
+            _empty_section(
+                sec.name,
+                list(sec.questions),
+                list(sec.keywords),
+                list(getattr(sec, "section_hints", None) or []),
+            )
             for sec in template.sections
         ]
         return {
@@ -235,28 +246,77 @@ def build_report_graph(
         doc_ids = state.get("doc_ids")
         sections = [dict(s) for s in (state.get("sections") or [])]
         errors = list(state.get("errors") or [])
+
+        def _section_match(hit_section: str | None, hints: list[str]) -> bool:
+            if not hints:
+                return False
+            label = (hit_section or "").strip()
+            if not label:
+                return False
+            for hint in hints:
+                hint = (hint or "").strip()
+                if not hint:
+                    continue
+                if hint in label or label in hint:
+                    return True
+            return False
+
+        def _prefer_hinted(hits: list, hints: list[str], limit: int) -> list:
+            if not hints:
+                return list(hits)[:limit]
+            preferred = []
+            rest = []
+            for hit in hits:
+                data = hit if isinstance(hit, dict) else hit.model_dump()
+                if _section_match(data.get("section"), hints):
+                    preferred.append(hit)
+                else:
+                    rest.append(hit)
+            chosen = preferred[:limit]
+            if len(chosen) < max(1, limit // 2):
+                # Not enough in-hint hits — fill from global remainder.
+                for hit in rest:
+                    if len(chosen) >= limit:
+                        break
+                    chosen.append(hit)
+            elif len(chosen) < limit:
+                for hit in rest:
+                    if len(chosen) >= limit:
+                        break
+                    chosen.append(hit)
+            return chosen
+
         for section in sections:
             query = _format_retrieve_query(section)  # type: ignore[arg-type]
+            hints = list(section.get("section_hints") or [])
+            # Over-fetch then prefer chunks whose section title matches hints.
+            fetch_k = max(top_k * 3, top_k)
             tool = search_chunks(
-                SearchChunksInput(query=query, doc_ids=doc_ids, top_k=top_k, mode="hybrid"),
+                SearchChunksInput(query=query, doc_ids=doc_ids, top_k=fetch_k, mode="hybrid"),
                 retriever=retriever,
             )
             if not tool.ok:
                 errors.append(f"retrieve:{section['name']}:{tool.error}")
                 section["chunks"] = []
                 continue
-            hits = tool.data.chunks if tool.data else []
+            raw_hits = tool.data.chunks if tool.data else []
+            hits = _prefer_hinted(raw_hits, hints, top_k)
             section["chunks"] = hits
             section["sources"] = [
-                Source(file=h.file, page=h.page, chunk_id=h.chunk_id) for h in hits
-            ]
-            section["facts"] = [
-                Fact(
-                    text=h.text,
-                    sources=[Source(file=h.file, page=h.page, chunk_id=h.chunk_id)],
-                )
+                Source(file=h.file, page=h.page, chunk_id=h.chunk_id)
+                if not isinstance(h, dict)
+                else Source(file=h["file"], page=h["page"], chunk_id=h["chunk_id"])
                 for h in hits
             ]
+            section["facts"] = []
+            for h in hits:
+                data = h if isinstance(h, dict) else h.model_dump()
+                section["facts"].append(
+                    Fact(
+                        text=data["text"],
+                        sources=[Source(file=data["file"], page=data["page"], chunk_id=data["chunk_id"])],
+                    )
+                )
         return {"sections": sections, "stage": "retrieve", "errors": errors}
 
     def write_node(state: ReportState) -> dict[str, Any]:

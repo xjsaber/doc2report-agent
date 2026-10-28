@@ -81,3 +81,61 @@ def test_short_sections_are_not_merged_or_overlapped(sample_pdf):
 def test_invalid_chunk_configuration(kwargs):
     with pytest.raises(ValueError):
         chunk_document(make_document("text"), **kwargs)
+
+
+def test_toc_pages_dropped_before_chunking():
+    from core.parse.chunking import is_toc_page, drop_toc_pages
+
+    toc_lines = "\n".join(f"第{i}章 示例标题........{i}" for i in range(1, 20))
+    assert is_toc_page(toc_lines)
+    body = "本公司主营物联网读写器与标签产品，报告期内持续拓展海外市场。" * 5
+    assert not is_toc_page(body)
+
+    document = ParsedDocument(
+        doc_id="toc-doc",
+        file="synthetic.pdf",
+        engine="pymupdf",
+        tables=[],
+        sections=[],
+        pages=[
+            ParsedPage(page=1, text=toc_lines, blocks=[TextBlock(page=1, text=toc_lines)]),
+            ParsedPage(
+                page=2,
+                text=body,
+                blocks=[
+                    TextBlock(page=2, text="第一节 公司概况", is_heading=True),
+                    TextBlock(page=2, text=body),
+                ],
+            ),
+        ],
+    )
+    filtered = drop_toc_pages(document)
+    assert len(filtered.pages) == 1 and filtered.pages[0].page == 2
+    chunks = chunk_document(filtered)
+    assert chunks
+    assert all("........" not in c.text for c in chunks)
+
+
+def test_title_only_chunk_merges_into_following_body():
+    from core.parse.chunking import merge_short_chunks
+
+    title = Chunk(
+        chunk_id="t1",
+        doc_id="d",
+        file="a.pdf",
+        text="公司概况",
+        page=1,
+        section="公司概况",
+    )
+    body = Chunk(
+        chunk_id="t2",
+        doc_id="d",
+        file="a.pdf",
+        text="公司成立于二零一零年，注册地深圳，主营物联网产品与服务。" * 8,
+        page=2,
+        section="公司概况",
+    )
+    merged = merge_short_chunks([title, body], min_chars=500)
+    assert len(merged) == 1
+    assert merged[0].text.startswith("公司概况")
+    assert "注册地深圳" in merged[0].text
