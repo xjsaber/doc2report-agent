@@ -133,11 +133,11 @@ python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf
 
 ## 测试结果
 
-本机（原生 Windows，Python 3.12.10）第 5 轮任务 3 [e2e] 后：
+本机（原生 Windows，Python 3.12.10）第 6 轮任务 1 [verify-fix] 后：
 
 ```text
 python -m pytest -q -rs --basetemp=.tmp/pytest/basetemp
-113 passed, 11 skipped, 0 failed
+126 passed, 11 skipped, 0 failed
 ```
 
 skip 均为原生 Windows 上的 Milvus Lite 契约。
@@ -145,7 +145,7 @@ skip 均为原生 Windows 上的 Milvus Lite 契约。
 ## 已知限制
 
 - Word 打开效果截图（`docs/images/word-open.png`）本轮未能无头稳定导出，需人工补拍（勿含用户名/路径/Key）。
-- 真实端到端实跑中五章均有引用，但数字核验仍全部 mismatch／pending（见 `docs/devlog/2026-10-r5-e2e.md`）。
+- 第 5 轮实跑五章核验曾全部 mismatch；第 6 轮 [verify-fix] 已改数值比较与噪声剥离（见 `docs/devlog/2026-10-r6-verify-fix.md`），完整年报重跑见后续 [retrieve-fix]。
 
 - 原生 Windows 不跑 Milvus Lite；请用 memory 或 Docker/WSL。
 - `MIN_VECTOR_SCORE=0.35` 仍待真实年报调参。
