@@ -136,9 +136,9 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 | 环境 | 命令 | 结果 |
 | --- | --- | --- |
 | Linux（Debian 13，Python 3.13.5，第 9 轮 [v1-ready]） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-r9-t3` | 193 passed, 0 skipped, 0 failed |
-| 原生 Windows 11（第 8 轮 [readme-v1prep]，笔记本未复测） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r8g` | 174 passed, 11 skipped, 0 failed |
+| 原生 Windows 11（第 9 轮 [pending-audit]，Python 3.12.10） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Temp\d2r-pytest-r9-t1` | 187 passed, 11 skipped, 0 failed |
 
-Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）。第 9 轮 win32 实测缺，待笔记本开机补跑。
+Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）。第 9 轮笔记本已复测：187 passed, 11 skipped（Python 3.12.10）。
 
 ### 端到端实测（仅本机一次运行，非基准）
 
