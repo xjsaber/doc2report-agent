@@ -6,7 +6,7 @@
 
 ## 截图
 
-以下为真实 Streamlit 界面截图（`scripts/screenshots.py` + Playwright 驱动上传/入库/提问/生成，等运行结束再截；无摆拍文案；第 8 轮重拍）。生成的 `.docx` 留在本地 `output/`（不入库）。
+以下为真实 Streamlit 界面截图（`scripts/screenshots.py` + Playwright 驱动上传/入库/提问/生成，等运行结束再截；无摆拍文案；报告两图为第 10 轮同一代码提交实拍，问答两图沿用此前实拍）。生成的 `.docx` 留在本地 `output/`（不入库）。
 
 ### 报告生成
 
@@ -144,22 +144,21 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 
 Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）。第 9 轮笔记本已复测：[v1-ready] 185 passed, 11 skipped（Python 3.12.10；已删 eval 相关单测）。
 
-### 端到端实测（2026-10-29补充验收，非基准）
+### 端到端实测（第 10 轮，非基准、重跑会变）
 
-- 原生Windows 11、Python 3.12.10、RTX 3050 Laptop GPU；现有模型配置，CLI使用memory检索器。
-- 原公开年报本次CLI实跑：`python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf --out-dir output/r9-acceptance --summary-json output/r9-acceptance/run-summary.json`。
-- 解析77.7s，入库145.1s，graph 177.3s，总计400.5s；待核实0处。
-- 本次最终pytest：**185 passed、11 skipped、1 warning**（13.23s）；命令 `python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Users\xjsab\AppData\Local\Temp\d2r-r9-acceptance-final-20261029`。
+Windows 11、Python 3.12.10、RTX 3050 Laptop GPU；运行代码提交 `4a2562f`，CLI 使用 memory。同一份公开年报解析 87.6 s，入库 77.6 s，graph 178.8 s，总计 344.5 s；errors：[]。
 
-| 章 | 核验状态 | 重写次数 | 待核实数 | 引用页 | 召回页 | 耗时(s) |
-| --- | --- | ---: | ---: | --- | --- | ---: |
-| 公司概况 | supported | 0 | 0 | 6,7,26,88 | 6,7,26,33,87,88 | 27.8 |
-| 主营业务 | supported | 0 | 0 | 23,26,153,154 | 9,23,26,64,153,154 | 21.4 |
-| 财务表现 | supported | 0 | 0 | 7,8,68 | 7,8,67,68,69,92 | 27.3 |
-| 风险因素 | supported | 1 | 0 | 2,30,31,167 | 2,27,30,31,167 | 62.6 |
-| 结论 | supported | 0 | 0 | 9,23,25,29,43 | 9,23,25,29,43 | 19.3 |
+| 章节 | 核验状态 | 重写次数 | 【待核实】 | 引用页 | 耗时 (s) |
+| --- | --- | ---: | ---: | --- | ---: |
+| 公司概况 | supported | 0 | 0 | 6, 7, 26, 88 | 32.4 |
+| 主营业务 | supported | 0 | 0 | 23, 26, 153, 154 | 16.9 |
+| 财务表现 | supported | 0 | 0 | 7, 8, 68 | 41.6 |
+| 风险因素 | supported | 0 | 0 | 2, 30, 31, 167 | 41.6 |
+| 结论 | supported | 0 | 0 | 23, 25, 29, 43 | 20.7 |
 
-完整原句、公司信息及引用、产物文件名见[补充验收日志](docs/devlog/2026-10-r9-acceptance.md)。截图来自脚本独立运行的真实Streamlit，不是CLI输出截图。正文仍含“待核验”和数据缺失陈述；0处仅统计【待核实】精确标记。数字核验supported不等于完整语义正确，模型输出也可能随重跑变化。
+完整原句、内部词计数、公司信息引用和 DOCX 文件名见[最终实跑日志](docs/devlog/2026-10-r10-final-run.md)。报告位于 `output/v1-final/`，不提交。截图为相同代码提交上的独立真实 UI 运行。
+
+任务 1 仅保留写作提示，没有自动守卫触发计数。精确【待核实】计数不等于未解决问题总数，supported 不代表全文语义正确。
 
 ## 已知局限
 
