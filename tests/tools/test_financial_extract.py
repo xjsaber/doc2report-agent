@@ -185,3 +185,45 @@ def test_quarterly_table_is_not_current_vs_previous():
     assert recalculate_ratio("同比", [QUARTERLY_P8], claim="营业收入同比") is None
     assert recalculate_ratio("净利率", [QUARTERLY_P8]) is None
     assert not is_quarterly_table("营业收入 2024年 2023年 545,680,493.10 601,286,596.33")
+
+
+def test_prefer_consolidated_net_profit_over_parent_attributable():
+    """Prefer 合并净利润 / bare 净利润; fall back to 归母 and expose the label."""
+    from core.tools.financial_extract import is_parent_attributable_profit_label
+
+    both = (
+        "净利润\n30,000,000.00\n28,000,000.00\n"
+        "归属于母公司所有者的净利润\n27,847,800.00\n28,000,000.00"
+    )
+    row = extract_financial_rows([both])["净利润"]
+    assert row.label == "净利润"
+    assert row.current == Decimal("30000000.00")
+    assert not is_parent_attributable_profit_label(row.label)
+
+    only_parent = "归属于母公司所有者的净利润\n27,847,800.00\n28,000,000.00"
+    parent = extract_financial_rows([only_parent])["净利润"]
+    assert parent.label == "归属于母公司所有者的净利润"
+    assert is_parent_attributable_profit_label(parent.label)
+
+    prefer = extract_financial_rows(
+        [
+            _hit("归属于上市公司股东的净利润（元）\n27847800\n28000000", page=1),
+            _hit("合并净利润\n30000000\n29000000", page=2, chunk_id="c2"),
+        ]
+    )["净利润"]
+    assert prefer.label == "合并净利润" and prefer.page == 2
+
+
+def test_calc_context_annotates_parent_attributable_net_margin():
+    ctx = _try_build_calc_context(
+        {
+            "chunks": [
+                _hit("营业总收入（元）\n545,680,493.10\n601,286,596.33", page=13),
+                _hit("归属于母公司所有者的净利润（元）\n27,847,800.00\n28,114,000.00", page=13, chunk_id="c2"),
+            ]
+        }
+    )
+    assert "calc_financials" not in ctx
+    assert "净利率（归母净利润口径） = 5.10%" in ctx
+    assert "销售净利率" not in ctx
+

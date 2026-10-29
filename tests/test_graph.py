@@ -246,3 +246,98 @@ def test_normalize_section_markdown_keeps_chapter_heading():
     assert sum(1 for ln in lines if ln.startswith("## ")) == 1
     assert normalize_section_markdown("结论", "## 结论\n\n好。") == "## 结论\n\n好。\n"
     assert normalize_section_markdown("结论", "无标题正文") == "## 结论\n\n无标题正文\n"
+
+
+def test_sanitize_internal_terms_strips_tool_names():
+    from core.graph.workflow import sanitize_internal_terms
+
+    cleaned, warnings = sanitize_internal_terms(
+        "写作上下文 calc_financials 给出净利率为5.10%【待核实】。销售净利率约 5%。"
+    )
+    assert "calc_financials" not in cleaned
+    assert "写作上下文" not in cleaned
+    assert "销售净利率" not in cleaned
+    assert "净利率" in cleaned
+    assert warnings
+
+
+def test_assemble_sanitizes_internal_terms():
+    from core.graph.workflow import build_report_graph
+    from core.models import Chunk, SearchHit
+    from core.qa.llm import ChatMessage
+
+    class _R:
+        def index_chunks(self, chunks):
+            return None
+
+        def search(self, query, doc_ids=None, top_k=8, mode="hybrid"):
+            return [
+                SearchHit(
+                    chunk_id="c1",
+                    doc_id="d",
+                    file="a.pdf",
+                    text="营业收入 100 元，净利润 10 元。",
+                    page=1,
+                    section="财务表现",
+                    score=1.0,
+                )
+            ]
+
+    class _C:
+        def complete(self, messages: list[ChatMessage]) -> str:
+            return (
+                "写作上下文 calc_financials 给出净利率为10%（据第1页数据计算）[a.pdf p1]。"
+                "销售净利率约 10%。"
+            )
+
+    graph = build_report_graph(retriever=_R(), chat_model=_C(), top_k=1)
+    state = graph.invoke(
+        {
+            "template_id": "company_analysis",
+            "title": "年报分析",
+            "doc_ids": ["d"],
+            "sections": [],
+            "current_section_index": 0,
+            "stage": "plan",
+            "report_md": "",
+            "export_paths": [],
+            "errors": [],
+        }
+    )
+    md = state.get("report_md") or ""
+    assert "calc_financials" not in md
+    assert "写作上下文" not in md
+    assert "销售净利率" not in md
+    assert any("assemble:sanitize" in e for e in (state.get("errors") or []))
+
+
+def test_write_prompt_forbids_internal_terms_and_sales_net_margin():
+    from core.graph.workflow import _write_prompt
+
+    messages = _write_prompt(
+        {
+            "name": "财务表现",
+            "questions": ["营业收入如何？"],
+            "keywords": ["营业收入"],
+            "section_hints": [],
+            "chunks": [
+                {
+                    "chunk_id": "c1",
+                    "doc_id": "d",
+                    "file": "a.pdf",
+                    "text": "营业收入（元）\n100\n80\n净利润（元）\n10\n8",
+                    "page": 1,
+                    "score": 1.0,
+                    "section": "财务指标",
+                }
+            ],
+        }
+    )
+    system = messages[0].content
+    assert "calc_financials" in system  # forbidden word named explicitly in the ban rule
+    assert "正文禁止出现 calc_financials" in system
+    assert "销售净利率" in system and "不要写成「销售净利率」" in system
+    assert "归母净利润口径" in system
+    user = messages[1].content
+    assert "calc_financials" not in user or "正文不要出现" in user
+

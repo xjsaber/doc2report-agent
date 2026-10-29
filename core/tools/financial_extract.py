@@ -35,10 +35,11 @@ METRIC_LABELS: dict[str, tuple[str, ...]] = {
     "营业收入": ("营业总收入", "营业收入"),
     "营业成本": ("营业总成本", "营业成本"),
     "净利润": (
+        "合并净利润",
+        "净利润",
         "归属于上市公司股东的净利润",
         "归属于母公司所有者的净利润",
         "归属于母公司股东的净利润",
-        "净利润",
     ),
     "经营活动现金流": ("经营活动产生的现金流量净额",),
     "总资产": ("资产总计", "资产总额", "总资产"),
@@ -109,7 +110,11 @@ def _unit_header_before(text: str, pos: int) -> str | None:
 
 def _prefix_rejected(text: str, start: int) -> bool:
     before = re.sub(r"\s+", "", text[max(0, start - 16) : start])
-    return any(before.endswith(prefix) for prefix in _REJECT_PREFIXES) or "扣除" in before[-12:]
+    return (
+        any(before.endswith(prefix) for prefix in _REJECT_PREFIXES)
+        or "扣除" in before[-12:]
+        or "归属于" in before
+    )
 
 
 def _scan_amounts(text: str, pos: int) -> tuple[list[tuple[Decimal, str | None]], int]:
@@ -195,6 +200,25 @@ def is_quarterly_table(text: str) -> bool:
     return len(labels) >= 2
 
 
+_PARENT_ATTRIBUTABLE_LABELS = (
+    "归属于上市公司股东的净利润",
+    "归属于母公司所有者的净利润",
+    "归属于母公司股东的净利润",
+)
+
+
+def is_parent_attributable_profit_label(label: str | None) -> bool:
+    """True when the extracted profit row is attributable-to-parent, not consolidated."""
+    if not label:
+        return False
+    compact = re.sub(r"\s+", "", label)
+    if "合并" in compact:
+        return False
+    if compact in {re.sub(r"\s+", "", item) for item in _PARENT_ATTRIBUTABLE_LABELS}:
+        return True
+    return "归属于" in compact and "净利润" in compact
+
+
 def extract_financial_rows(hits: Iterable[Any], metrics: Iterable[str] | None = None) -> dict[str, FinancialRow]:
     """Extract the first valid row per metric from chunks (dicts, models, or plain strings)."""
     wanted = list(metrics) if metrics is not None else list(METRIC_LABELS)
@@ -202,26 +226,33 @@ def extract_financial_rows(hits: Iterable[Any], metrics: Iterable[str] | None = 
     rows: dict[str, FinancialRow] = {}
     for metric in wanted:
         labels = METRIC_LABELS[metric]
-        for text, file, page, chunk_id in items:
-            if is_quarterly_table(text):
-                continue
-            found = extract_row(text, labels)
-            if found is None:
-                continue
-            label, cells = found
-            current, unit = cells[0]
-            previous = cells[1][0] if len(cells) > 1 else None
-            rows[metric] = FinancialRow(
-                metric=metric,
-                label=label,
-                current=current,
-                previous=previous,
-                unit=unit,
-                file=file,
-                page=page,
-                chunk_id=chunk_id,
-            )
-            break
+        # Label priority first (e.g. 合并净利润 before 归母), then scan chunks.
+        chosen = None
+        for label in labels:
+            for text, file, page, chunk_id in items:
+                if is_quarterly_table(text):
+                    continue
+                found = extract_row(text, (label,))
+                if found is None:
+                    continue
+                matched_label, cells = found
+                current, unit = cells[0]
+                previous = cells[1][0] if len(cells) > 1 else None
+                chosen = FinancialRow(
+                    metric=metric,
+                    label=matched_label,
+                    current=current,
+                    previous=previous,
+                    unit=unit,
+                    file=file,
+                    page=page,
+                    chunk_id=chunk_id,
+                )
+                break
+            if chosen is not None:
+                break
+        if chosen is not None:
+            rows[metric] = chosen
     return rows
 
 

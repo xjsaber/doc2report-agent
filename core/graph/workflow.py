@@ -31,7 +31,7 @@ from core.tools.calc_financials import (
 )
 from decimal import Decimal
 
-from core.tools.financial_extract import extract_financial_rows, ratio_is_plausible
+from core.tools.financial_extract import extract_financial_rows, is_parent_attributable_profit_label, ratio_is_plausible
 
 _PENDING_MARK = "【待核实】"
 _CITATION_LINE_RE = re.compile(r"\[[^\[\]]+?\s+p\d+\]")
@@ -119,6 +119,9 @@ def _try_build_calc_context(section: SectionState) -> str:
     result = calc_financials(CalcFinancialsInput(values=values))
     if not result.ok or result.data is None:
         return ""
+    # Map metric display name; annotate net margin when profit input is 归母口径.
+    profit_row = rows.get("净利润")
+    parent_scope = bool(profit_row and is_parent_attributable_profit_label(profit_row.label))
     lines: list[str] = []
     for metric in result.data.metrics:
         if metric.value is None:
@@ -128,10 +131,23 @@ def _try_build_calc_context(section: SectionState) -> str:
             continue
         pages = sorted({s.page for s in metric.sources})
         page_text = "、".join(str(p) for p in pages) if pages else "?"
-        lines.append(f"- {metric.name} = {pct}% （据第 {pages[0]} 页数据计算）；公式：{metric.formula}；所用页码：{page_text}")
+        display = metric.name
+        formula = metric.formula
+        if metric.name == "净利率" and parent_scope:
+            display = "净利率（归母净利润口径）"
+            formula = "归母净利润 / 营业收入"
+        lines.append(
+            f"- {display} = {pct}% （据第 {pages[0]} 页数据计算）；公式：{formula}；所用页码：{page_text}"
+        )
     if not lines:
         return ""
-    return "\n".join(["已用 calc_financials 根据片段数字算出的比率（写作时必须引用这些结果，禁止自行心算）：", *lines])
+    return "\n".join(
+        [
+            "已根据检索片段数字算出的比率（写作时必须引用这些结果，禁止自行心算；"
+            "正文不要出现内部工具名或「写作上下文」字样）：",
+            *lines,
+        ]
+    )
 
 
 def _write_prompt(section: SectionState) -> list[ChatMessage]:
@@ -147,9 +163,11 @@ def _write_prompt(section: SectionState) -> list[ChatMessage]:
         "你是年报分析写作者。只根据检索片段撰写该章节；"
         "每条含事实的句子后必须标注 [文件名 p页码]；"
         "不得编造片段中没有的数字或结论。"
-        "同比、毛利率、净利率、资产负债率等比率禁止自行心算，必须使用写作上下文中 calc_financials 的结果，"
+        "同比、毛利率、净利率、资产负债率等比率禁止自行心算，必须使用下方「已根据检索片段数字算出的比率」中的结果，"
         "并在该句末尾标注「（据第 X 页数据计算）」（X 为计算所用原文页码）。"
-        "若关键数字无法在片段中确认，可先写结论并等待核验。"
+        "若净利率标注为「归母净利润口径」，正文必须写明「归母净利润口径」，不要写成「销售净利率」。"
+        "正文禁止出现 calc_financials、「写作上下文」、内部函数名或工具名。"
+        "若相关数字无法在片段中确认，可先写结论并等待核验。"
     )
     if section_needs_audit_filter(str(section.get("name") or "")):
         system += AUDIT_PROMPT_RULE
@@ -178,6 +196,28 @@ def _rewrite_prompt(section: SectionState, notes: Sequence[str]) -> list[ChatMes
         )
     )
     return base
+
+
+
+_INTERNAL_TERM_RES: tuple[re.Pattern[str], str] = (
+    (re.compile(r"写作上下文\s*calc_financials\s*给出?", re.IGNORECASE), ""),
+    (re.compile(r"写作上下文\s*", re.IGNORECASE), ""),
+    (re.compile(r"\bcalc_financials\b", re.IGNORECASE), "财务比率计算"),
+    (re.compile(r"销售净利率"), "净利率"),
+)
+
+
+def sanitize_internal_terms(markdown: str) -> tuple[str, list[str]]:
+    """Strip internal tool/prompt words from report body; return (text, warnings)."""
+    warnings: list[str] = []
+    out = markdown or ""
+    for pattern, repl in _INTERNAL_TERM_RES:
+        if pattern.search(out):
+            warnings.append(f"removed_or_replaced:{pattern.pattern}")
+            out = pattern.sub(repl, out)
+    # Collapse awkward doubled spaces left by deletions (keep newlines).
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    return out, warnings
 
 
 _HEADING_LINE_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -435,12 +475,19 @@ def build_report_graph(
     def assemble_node(state: ReportState) -> dict[str, Any]:
         title = state.get("title") or "年报分析"
         parts = [f"# {title}", ""]
+        errors = list(state.get("errors") or [])
         for section in state.get("sections") or []:
             md = section.get("markdown") or f"## {section.get('name')}\n"
-            parts.append(md.rstrip())
+            cleaned, warnings = sanitize_internal_terms(md)
+            for warning in warnings:
+                errors.append(f"assemble:sanitize:{section.get('name')}:{warning}")
+            parts.append(cleaned.rstrip())
             parts.append("")
         report_md = "\n".join(parts).rstrip() + "\n"
-        return {"report_md": report_md, "stage": "assemble"}
+        report_md, top_warnings = sanitize_internal_terms(report_md)
+        for warning in top_warnings:
+            errors.append(f"assemble:sanitize:report:{warning}")
+        return {"report_md": report_md, "stage": "assemble", "errors": errors}
 
     def route_after_verify(state: ReportState) -> str:
         for section in state.get("sections") or []:
