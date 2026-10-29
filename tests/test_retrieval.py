@@ -69,13 +69,16 @@ def test_empty_tokens(retriever, mode):
     assert np.isfinite(retriever.search("???", mode=mode)[0].score)
 
 
-def test_factory(monkeypatch):
+def test_factory(monkeypatch, caplog):
     assert isinstance(get_retriever(), MemoryRetriever)
-    monkeypatch.delenv("RETRIEVER")
+    monkeypatch.delenv("RETRIEVER", raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
     assert isinstance(get_retriever(), MemoryRetriever)
-    with pytest.raises(RuntimeError, match="RETRIEVER=memory.*Docker"):
-        get_retriever("milvus")
+    # Explicit milvus on win32 falls back to memory with a warning (no hard crash).
+    with caplog.at_level("WARNING"):
+        fallback = get_retriever("milvus")
+    assert isinstance(fallback, MemoryRetriever)
+    assert any("falling back to memory" in r.message for r in caplog.records)
     monkeypatch.setenv("RETRIEVER", "invalid")
     with pytest.raises(ValueError, match="RETRIEVER"):
         get_retriever()

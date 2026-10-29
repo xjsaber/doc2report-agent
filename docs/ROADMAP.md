@@ -2,7 +2,7 @@
 
 ## v1（Demo，约 12 月）
 - PyMuPDF 解析（MinerU 可选，未安装自动回退），保留页码
-- 切块 + Milvus Lite 向量 + BM25 混合召回；检索通过 Retriever 接口（RETRIEVER=milvus）
+- 切块 + Milvus Lite 向量 + BM25 混合召回；检索通过 Retriever 接口（`.env.example` 默认 RETRIEVER=memory）
 - LangGraph：plan → retrieve → write → verify → assemble，强制引用 [文件名 p页码]
 - 工具层 8 个工具（见 TOOLS_SPEC），统一返回结构，calc_financials 纯代码计算，verify_claim，MCP 暴露
 - 模型：OpenAI 兼容接口，默认 MODEL=deepseek-flash（非思考模式），可配置
@@ -18,22 +18,22 @@
 - 仓库只放截图（docs/images/），v1 阶段不放演示视频或 GIF。
 - v1 完成后，把问答页拆成一个薄的独立小仓库（依赖本库 core），作为第二个可独立演示的作品。
 
-### v1 交付计划完成情况（截至 2026-10-29，第 8 轮）
+### v1 交付计划完成情况（截至 2026-10-29，第 9 轮）
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
 | 页眉页脚去噪 | 已完成 | `core/parse/pdf.py` |
-| Retriever memory + milvus | 已完成 | Windows 默认 memory；Milvus Lite 契约测试在 Linux 通过 |
+| Retriever memory + milvus | 已完成 | `.env.example` 默认 memory；win32 上 milvus 自动回落 memory；Milvus Lite 契约测试在 Linux 通过 |
 | 向量 + BM25 RRF、search_chunks | 已完成 | |
 | 独立 RAG 问答页 | 已完成 | `app/rag.py`；命中原文中已引用片段排在前面 |
-| LangGraph plan → retrieve → write → verify → assemble | 已完成 | 逐句核验、最多重写 1 次、审计报告页降级 |
-| calc_financials / verify_claim 等工具、强制引用 | 已完成 | 比率只算四类，见 README「已知局限」 |
+| LangGraph plan → retrieve → write → verify → assemble | 已完成 | 逐句核验、最多重写 1 次、审计报告页降级；assemble 清理内部词 |
+| calc_financials / verify_claim 等工具、强制引用 | 已完成 | 比率只算四类；净利率优先合并口径，归母时正文写明 |
 | python-docx 导出 | 已完成 | CLI 与报告页都输出 `.docx` |
 | Streamlit 报告生成页 | 已完成 | |
-| README 完整化（安装、用法、架构图、运行截图） | 已完成 | 第 8 轮补上 Windows / Linux 快速开始、已知局限、两套环境的测试结果、`docs/core-api.md` |
-| 最小评估脚本 `scripts/eval.py` | **未完成** | 目前只有入口占位（NotImplementedError） |
+| README 完整化（安装、用法、架构图、运行截图） | 已完成 | 含最小评估说明；Word 打开图位已预留（作者本机补拍） |
+| 最小评估脚本 `scripts/eval.py` | 已完成 | 8 题手标期望页 + 检索命中率；去掉 NotImplementedError |
 | 问答页拆成独立小仓库 | 未开始 | 计划在 v1 完成后做 |
-| v1 打 tag | 未打 | 等作者确认 |
+| v1 打 tag | 未打 | 等作者确认（勿由代理打 tag） |
 
 ## v2
 - Elasticsearch 两级检索（chapters/items，BM25 + kNN + RRF）作为第二个 Retriever 实现

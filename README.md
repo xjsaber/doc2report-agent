@@ -6,13 +6,17 @@
 
 ## 截图
 
-以下为真实 Streamlit 界面截图（`scripts/screenshots.py` + Playwright 驱动上传/入库/提问/生成，等运行结束再截；无摆拍文案；第 8 轮重拍）。Word 打开图本轮不拍，生成的 `.docx` 留在本地 `output/`（不入库）。
+以下为真实 Streamlit 界面截图（`scripts/screenshots.py` + Playwright 驱动上传/入库/提问/生成，等运行结束再截；无摆拍文案；第 8 轮重拍）。生成的 `.docx` 留在本地 `output/`（不入库）。
 
 ### 报告生成
 
 ![报告生成进度](docs/images/report-progress.png)
 
 ![报告预览](docs/images/report-preview.png)
+
+<!-- Word 打开图由作者本机拍摄后放入 docs/images/word-open.png，再取消下一行注释：
+![Word 打开效果](docs/images/word-open.png)
+-->
 
 ### 独立问答
 
@@ -52,7 +56,7 @@ python -m venv .venv
 python -m pip install -U pip
 python -m pip install -e ".[dev,qa,embedding]"
 Copy-Item .env.example .env
-# 编辑 .env：填入 API_KEY，并把 RETRIEVER 改为 memory（原生 Windows 无 Milvus Lite）
+# 编辑 .env：填入 API_KEY（.env.example 默认 RETRIEVER=memory；Windows 上若误设 milvus 会自动回落）
 
 # 首次使用显式下载本地向量模型（权重不入库；运行时不会静默联网）
 python -m core.index.embeddings --download-model
@@ -66,7 +70,7 @@ source .venv/bin/activate
 pip install -U pip
 pip install -e ".[dev,qa,embedding,milvus]"
 cp .env.example .env
-# 编辑 .env：填入 API_KEY；RETRIEVER=milvus（默认）或 memory
+# 编辑 .env：填入 API_KEY；默认 RETRIEVER=memory，Linux 可改 milvus
 
 python -m core.index.embeddings --download-model
 ```
@@ -119,7 +123,7 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 | `BASE_URL` | `https://api.deepseek.com` | OpenAI 兼容接口 |
 | `API_KEY` | （空） | 仅从 `.env` 读取，勿提交 |
 | `MODEL` | `deepseek-flash` | 非思考模式 |
-| `RETRIEVER` | Windows=`memory`，其它=`milvus` | 检索后端 |
+| `RETRIEVER` | `memory`（`.env.example` 默认）；未设置时 Windows=`memory`、其它=`milvus`；win32 上 `milvus` 自动回落 `memory` 并打日志 | 检索后端 |
 | `EMBEDDING_BACKEND` | `local` | `local` / `fake`（测试） |
 | `EMBEDDING_MODEL` | `BAAI/bge-small-zh-v1.5` | 本地向量模型 |
 | `EMBED_DEVICE` | 自动 | `cuda` / `cpu`；有 CUDA 默认 GPU |
@@ -129,14 +133,12 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 
 ## 测试结果
 
-两套环境均为真实运行结果（第 8 轮 [readme-v1prep] 最终代码）：
-
 | 环境 | 命令 | 结果 |
 | --- | --- | --- |
-| 原生 Windows 11 家庭版 10.0.26300，Python 3.12.10，PowerShell 5.1 | `python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r8g` | 174 passed, 11 skipped, 0 failed |
-| Linux（Debian 13，Python 3.12.15，含 milvus 依赖：pymilvus 2.6.17 + milvus-lite 2.5.1） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-r8-linux2` | 185 passed, 0 skipped, 0 failed |
+| Linux（Debian 13，Python 3.13.5，第 9 轮 [v1-ready]） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-r9-t3` | 193 passed, 0 skipped, 0 failed |
+| 原生 Windows 11（第 8 轮 [readme-v1prep]，笔记本未复测） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r8g` | 174 passed, 11 skipped, 0 failed |
 
-Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）；Linux 上这 11 个测试实际运行并通过。
+Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）。第 9 轮 win32 实测缺，待笔记本开机补跑。
 
 ### 端到端实测（仅本机一次运行，非基准）
 
@@ -155,18 +157,29 @@ Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不�
 
 各阶段耗时：解析 82.4 s，入库（嵌入）47.6 s，LangGraph 五节点 161.7 s，总计 292.0 s。模型输出有随机性，换机器、换模型或重跑，数字都会变化。
 
+
+## 最小评估（检索命中率）
+
+```bash
+python scripts/eval.py --pdf data/samples/public-annual-report-2024.pdf --out output/eval.json
+```
+
+8 个手标问题（期望页码），hybrid top_k=6，统计期望页是否出现在命中页中。**只记录本机实测值，不编造。**
+
+本机一次运行（第 9 轮，Debian 13 / Python 3.13.5 / `RETRIEVER=memory` / 公开年报样本）：**hit_rate=1.000（8/8）**，耗时约 32.4 s。换机器、换嵌入模型或换样本都会变。
+
 ## 已知局限
 
-- **Milvus Lite 不支持原生 Windows**：Windows 请设 `RETRIEVER=memory`（`.env.example` 默认写的是 `milvus`，复制后要改），或改在 Docker / WSL / Linux / macOS 下运行。
+- **Milvus Lite 不支持原生 Windows**：`.env.example` 默认 `RETRIEVER=memory`；若仍写成 `milvus`，工厂在 win32 上会打日志并回落到 `memory`。完整 Milvus Lite 请用 Docker / WSL / Linux / macOS。
 - **核验粒度**：含数字的句子会把数字与引用页原文逐个比对；不含数字的句子只校验引用（文件、页码存在，且该页在本章检索到的片段内），不判断语义是否正确。
 - **比率只算四类**：同比增速（营业收入、净利润）、毛利率、净利率、资产负债率。其余指标不做代码计算。
 - **毛利率可能缺失**：「分行业 / 分产品」表若以列标题形式排列（营业收入、营业成本各占一列），目前抽不出「营业成本」行，因此可能算不出毛利率，报告里不出现该项。
 - **括号负数不支持**：抽取时不会把 `(1,234.56)` 这类会计括号写法识别为负数。
 - `MIN_VECTOR_SCORE=0.35` 目前只用一份公开年报调过，仍需更多样本调参。
-- 写作模型偶尔会把内部工具名（如 calc_financials）写进正文，需人工通读。
+- 写作模型偶尔仍可能把内部词写进正文；assemble 会清理 `calc_financials` /「写作上下文」，仍建议人工通读。
 - 模板 v1 只有「年报分析」一种。
 - 本地 embedding **不会**在运行时静默联网：缺模型时请显式执行 `python -m core.index.embeddings --download-model`，或给 CLI 加 `--download-model`，或设置 `EMBEDDING_ALLOW_DOWNLOAD=1`。模型权重不入库。
-- Word 文档的打开效果不截图，请直接打开 `output/` 中生成的 `.docx`（不入库）。
+- Word 打开图：`docs/images/word-open.png` 由作者本机拍摄后提交；文件不存在时 README 中对应图片行保持注释。也可直接打开 `output/` 里的 `.docx`（不入库）。
 - 不提交 PDF、`.env`、密钥、模型文件、`output/` 与生成的报告。
 - 核心函数入口与签名见 [docs/core-api.md](docs/core-api.md)。
 
