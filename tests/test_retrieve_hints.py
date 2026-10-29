@@ -75,3 +75,15 @@ def test_retrieve_prefers_section_hints():
     # Hinted intro should beat higher-score TOC/内部控制 when hints match.
     assert "intro" in chunk_ids
     assert retriever.calls and retriever.calls[0]["top_k"] >= 2
+
+
+def test_company_overview_template_has_company_info_hints():
+    from core.tools.templates import LoadTemplateInput, load_template
+
+    loaded = load_template(LoadTemplateInput(template_id="company_analysis"))
+    assert loaded.ok and loaded.data
+    overview = next(s for s in loaded.data.template.sections if s.name == "公司概况")
+    for token in ("公司信息", "注册地址", "股票简称"):
+        assert token in overview.keywords
+        assert token in overview.section_hints
+
