@@ -1,19 +1,19 @@
-# 第9轮补充验收（2026-10-29）
+# 第 9 轮补充验收（2026-10-29）
 
 ## 环境与决策
 
 - Windows 11 / PowerShell 7.6.5 / 现有 .venv Python 3.12.10 / NVIDIA GeForce RTX 3050 Laptop GPU。
-- 复用原三个任务提交459061d、7156ff2、d7bafa1；本次为真实补充验收，不改写提交、不打tag。
-- git pull成功；邮箱xjsaber@users.noreply.github.com；用户已有未跟踪观察JSON保留。
-- API使用已有配置，未输出密钥；CLI明确使用memory检索器。只用原公开年报，不下载新模型。
-- 用Python UTF-8修复pending-audit日志的排版和五句完整原文，纠正第4句的过强“合理”分类。
+- 复用原三个任务提交 459061d、7156ff2、d7bafa1；本次为真实补充验收，不改写提交、不打 tag。
+- git pull 成功；邮箱 xjsaber@users.noreply.github.com；用户已有未跟踪观察 JSON 保留。
+- API 使用已有配置，未输出密钥；CLI 明确使用 memory 检索器。只用原公开年报，不下载新模型。
+- 用 Python UTF-8 修复 pending-audit 日志的排版和五句完整原文，纠正第 4 句的过强“合理”分类。
 - 既有多页计算、内部词清理、合并优先与归母口径均有测试，未新增重复代码或测试。
 
-## 本次CLI实跑
+## 本次 CLI 实跑
 
 `python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf --out-dir output/r9-acceptance --summary-json output/r9-acceptance/run-summary.json`
 
-- 记录时间UTC：2026-10-29T12:12:38.948526+00:00
+- 记录时间 UTC：2026-10-29T12:12:38.948526+00:00
 - chunks：1646；errors：[]。
 - parse：77.7s；index：145.1s；graph：177.3s；total：400.5s。
 - 待核实标记总数：0。
@@ -29,7 +29,7 @@
 
 ### 待核实原句
 
-本次无【待核实】原句。正文仍出现“公司主营定位待核验”、主要会计数据“相关数据待核验”，以及无法确认全年同比/毛利率的陈述。0处仅是该精确标记的计数，不等于未解决事项为0，也不能据此宣称内容质量提升。
+本次无【待核实】原句。正文仍出现“公司主营定位待核验”、主要会计数据“相关数据待核验”，以及无法确认全年同比/毛利率的陈述。0 处仅是该精确标记的计数，不等于未解决事项为 0，也不能据此宣称内容质量提升。
 
 ### 公司信息与引用
 
@@ -48,14 +48,14 @@ calc_financials=0；写作上下文=0；销售净利率=0。
 ## 截图与人工确认
 
 - 使用 `python scripts/screenshots.py --skip-qa --pdf data/samples/public-annual-report-2024.pdf --report-port 8512` 重拍 report-preview / report-progress。
-- 脚本运行真实Streamlit并独立调用模型；截图对应UI实跑，不冒充上述CLI相同输出。模型输出可能不同，截图不能替代CLI summary。
-- Word打开截图仍由作者拍摄，README对应图片行保持注释；本次不生成占位图。
-- 人工确认：通读DOCX，尤其无数字语义和否定披露陈述。supported不是完整事实人工验收；见审计日志第2/4句与额外not_found。
+- 脚本运行真实 Streamlit 并独立调用模型；截图对应 UI 实跑，不冒充上述 CLI 相同输出。模型输出可能不同，截图不能替代 CLI summary。
+- Word 打开截图仍由作者拍摄，README 对应图片行保持注释；本次不生成占位图。
+- 人工确认：通读 DOCX，尤其无数字语义和否定披露陈述。supported 不是完整事实人工验收；见审计日志第 2/4 句与额外 not_found。
 
 ## 测试与坑
 
-`python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Users\xjsab\AppData\Local\Temp\d2r-r9-acceptance-final-20261029`
+`python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-r9-acceptance-final-20261029`
 
-185 passed / 11 skipped / 1 warning，13.23s。11项为Milvus Lite原生Windows不支持；warning为LangChainPendingDeprecationWarning。
-沙箱对外部仓库git操作最初返回工作树错误，受支持提权审批后git pull成功；未绕过拒绝。
+185 passed / 11 skipped / 1 warning，13.23s。11 项为 Milvus Lite 原生 Windows 不支持；warning 为 LangChainPendingDeprecationWarning。
+沙箱对外部仓库 git 操作最初返回工作树错误，受支持提权审批后 git pull 成功；未绕过拒绝。
 脚本标准输出有缓冲，长任务进度由进程与产物确认；不以无即时输出判定失败。

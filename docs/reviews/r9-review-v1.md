@@ -45,7 +45,7 @@
    不管选哪个，测试改成不依赖原句逐字。
 2. **README 整理**：
    - 测试结果现在有 199 / 193 / 185 三套数字混在一起，收成一张表：Windows（passed / 11 skipped）和 Linux（全跑），都是 tag 候选 HEAD 的结果。
-   - 命令里的 `C:\Users\xjsab\...` 暴露了本机用户名，改成 `$env:LOCALAPPDATA\Temp\...`。
+   - 命令里的绝对用户目录路径暴露了本机用户名，应改成 `$env:LOCALAPPDATA\Temp\...`。
    - 端到端实测只留 tag 候选 HEAD 那次。
    - 中英文、数字之间补空格（「CLI使用memory检索器」这类）。
 3. **在 tag 候选 HEAD 上跑一次完整 CLI**（--summary-json），README 和 CHANGELOG 用这次的数字；需要的话重拍 report 两张截图。

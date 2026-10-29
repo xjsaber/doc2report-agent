@@ -133,16 +133,14 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 
 ## 测试结果
 
-第 10 轮任务 1：185 passed / 11 skipped / 1 warning；删除 14 项随窄守卫移除的测试，保留写作提示契约测试。最终表格在任务 3 统一。
+当前候选代码的验证结果（第 10 轮最终提交；报告运行代码与 `4a2562f` 相同）：
 
-最新窄修复（2026-10-29）：**199 passed、11 skipped、1 warning**（4.48s）。新增14项否定披露守卫回归。命令：`python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Users\xjsab\AppData\Local\Temp\d2r-disclosure-full-20261029`。证据与边界见[修复日志](docs/devlog/2026-10-r9-disclosure-guard.md)。下表保留先前版本实测。
-
-| 环境 | 命令 | 结果 |
+| 环境 | 当前结果 | 说明 |
 | --- | --- | --- |
-| Linux（Debian 13，Python 3.13.5，第 9 轮 [v1-ready]） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-r9-t3` | 193 passed, 0 skipped, 0 failed |
-| 原生 Windows 11（第 9 轮 [v1-ready]，Python 3.12.10） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Temp\d2r-pytest-r9-t3b` | 185 passed, 11 skipped, 0 failed |
+| Windows 11 / Python 3.12.10 | 186 passed / 11 skipped | 11 项 Milvus Lite 契约测试在原生 Windows 跳过；另有 1 项依赖弃用预告 |
+| Linux（全跑，含 Milvus Lite） | 以评审复现为准 | 本机没有可用 Linux 环境；[评审目录](docs/reviews/)保留复现记录，旧提交数字不代表当前 HEAD |
 
-Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）。第 9 轮笔记本已复测：[v1-ready] 185 passed, 11 skipped（Python 3.12.10；已删 eval 相关单测）。
+Windows 命令：`python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r10`。
 
 ### 端到端实测（第 10 轮，非基准、重跑会变）
 

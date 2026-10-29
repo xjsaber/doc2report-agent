@@ -20,3 +20,15 @@ def test_docs_markdown_has_no_control_characters():
 def test_docs_have_no_unfilled_placeholders():
     for path in sorted(DOCS.rglob("*.md")):
         assert "写入本段下方「实跑补充」" not in path.read_text(encoding="utf-8"), path.name
+
+
+def test_readme_and_docs_have_no_windows_user_paths():
+    root = DOCS.parent
+    paths = [root / "README.md", *sorted(DOCS.rglob("*.md"))]
+    forbidden = re.compile(r"C:\\Users\\", re.IGNORECASE)
+    offenders = []
+    for path in paths:
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if forbidden.search(line):
+                offenders.append(f"{path.relative_to(root)}:{line_no}")
+    assert not offenders, "absolute user paths in Markdown: " + ", ".join(offenders)
