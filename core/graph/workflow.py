@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from core.graph.disclosure_guard import correct_disclosure_denials
+
 from collections.abc import Callable, Sequence
 from time import perf_counter
 from typing import Any, Literal
@@ -502,6 +504,7 @@ def build_report_graph(
                 section["verification_notes"] = ["无检索片段"]
                 continue
 
+            md, disclosure_notes = correct_disclosure_denials(md, hits)
             ok, err = validate_answer_citations(md, citations)
             if not ok:
                 status = "not_found"
@@ -562,6 +565,8 @@ def build_report_graph(
                 section["verification_status"] = "supported"
                 section["verification_notes"] = []
                 section["markdown"] = md if md.endswith("\n") else md + "\n"
+
+            section["verification_notes"].extend(disclosure_notes)
 
         return {
             "sections": sections,

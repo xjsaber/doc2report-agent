@@ -133,6 +133,8 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 
 ## 测试结果
 
+最新窄修复（2026-10-29）：**199 passed、11 skipped、1 warning**（4.48s）。新增14项否定披露守卫回归。命令：`python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Users\xjsab\AppData\Local\Temp\d2r-disclosure-full-20261029`。证据与边界见[修复日志](docs/devlog/2026-10-r9-disclosure-guard.md)。下表保留先前版本实测。
+
 | 环境 | 命令 | 结果 |
 | --- | --- | --- |
 | Linux（Debian 13，Python 3.13.5，第 9 轮 [v1-ready]） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-r9-t3` | 193 passed, 0 skipped, 0 failed |
@@ -160,6 +162,7 @@ Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不�
 ## 已知局限
 
 - **Milvus Lite 不支持原生 Windows**：`.env.example` 默认 `RETRIEVER=memory`；若仍写成 `milvus`，工厂在 win32 上会打日志并回落到 `memory`。完整 Milvus Lite 请用 Docker / WSL / Linux / macOS。
+- **否定披露窄守卫**：仅对两种已知句式，在当前实际引用片段具有完整表格行时纠正“未包含明细/未显示毛利率”；缺列、跨块或错页保留警示。不是通用语义核验。
 - **核验粒度**：含数字的句子会把数字与引用页原文逐个比对；不含数字的句子只校验引用（文件、页码存在，且该页在本章检索到的片段内），不判断语义是否正确。
 - **比率只算四类**：同比增速（营业收入、净利润）、毛利率、净利率、资产负债率。其余指标不做代码计算。
 - **毛利率可能缺失**：「分行业 / 分产品」表若以列标题形式排列（营业收入、营业成本各占一列），目前抽不出「营业成本」行，因此可能算不出毛利率；写作者可能标【待核实】。v1 不扩列表头表抽取（见 ROADMAP / 已知局限）。
