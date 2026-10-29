@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from core.graph.disclosure_guard import correct_disclosure_denials
-
 from collections.abc import Callable, Sequence
 from time import perf_counter
 from typing import Any, Literal
@@ -235,6 +233,8 @@ def _write_prompt(section: SectionState) -> list[ChatMessage]:
         "并在该句末尾标注「（据第 X 页数据计算）」（X 为计算所用原文页码）。"
         "若净利率标注为「归母净利润口径」，正文必须写明「归母净利润口径」，不要写成「销售净利率」。"
         "正文禁止出现 calc_financials、「写作上下文」、内部函数名或工具名。"
+        "引用片段含相关表格行时，不得写「未披露」「未包含」「未显示」或「无法确认」该维度。"
+        "只有表头、没有数据行或列对应关系不明时，应说明片段证据不足，不得推断整份年报未披露。"
         "若相关数字无法在片段中确认，可先写结论并等待核验。"
     )
     if section_needs_audit_filter(str(section.get("name") or "")):
@@ -504,7 +504,6 @@ def build_report_graph(
                 section["verification_notes"] = ["无检索片段"]
                 continue
 
-            md, disclosure_notes = correct_disclosure_denials(md, hits)
             ok, err = validate_answer_citations(md, citations)
             if not ok:
                 status = "not_found"
@@ -565,8 +564,6 @@ def build_report_graph(
                 section["verification_status"] = "supported"
                 section["verification_notes"] = []
                 section["markdown"] = md if md.endswith("\n") else md + "\n"
-
-            section["verification_notes"].extend(disclosure_notes)
 
         return {
             "sections": sections,

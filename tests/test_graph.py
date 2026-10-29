@@ -336,6 +336,9 @@ def test_write_prompt_forbids_internal_terms_and_sales_net_margin():
     system = messages[0].content
     assert "calc_financials" in system  # forbidden word named explicitly in the ban rule
     assert "正文禁止出现 calc_financials" in system
+    assert "引用片段含相关表格行时，不得写" in system
+    assert all(term in system for term in ("未披露", "未包含", "未显示", "无法确认"))
+    assert "不得推断整份年报未披露" in system
     assert "销售净利率" in system and "不要写成「销售净利率」" in system
     assert "归母净利润口径" in system
     user = messages[1].content

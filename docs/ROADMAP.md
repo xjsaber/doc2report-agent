@@ -36,6 +36,7 @@
 | v1 打 tag | 未打 | 等作者确认（勿由代理打 tag） |
 
 ## v2
+- 通用否定披露矛盾检测：先建立跨表头、缺列、错页和不同措辞的标注样本；仅加待核实标记和核验说明，不自动改写正文。v1 删除逐字句式守卫，只保留写作提示规则。
 - 评估脚本 / 评估集（原 `scripts/eval.py` 最小命中率评估 + 完整集）
 - Elasticsearch 两级检索（chapters/items，BM25 + kNN + RRF）作为第二个 Retriever 实现
 - FastAPI /tools 内部接口
