@@ -1,52 +1,46 @@
-# 2026-10-r9 [pending-audit] Windows 观察
+# 2026-10-r9 [pending-audit] Windows 观察（补充验收修订）
 
-## 环境
+## 环境与依据
 
-- 系统：原生 Windows 11（笔记本 machine）
-- Python：3.12.10（仓库 .venv）
-- GPU：NVIDIA GeForce RTX 3050 Laptop GPU（torch CUDA 可用；本轮归因/pytest 不跑嵌入）
-- 样本归因对象：**本机** output/r8c/年报分析-20261028-233544.md + output/r8c/verify-debug.json + 
-un-summary.json（与 Linux box 第 9 轮所用 r8 遗留产物不同）
-- 代码基线：已合入 6e2afc5 [pending-audit] + 822d64f [r10]；本提交只补 Windows 侧归因记录与实测，不重复改抽取/写作逻辑。
+- 原生 Windows 11；PowerShell 7.6.5；仓库 .venv Python 3.12.10。
+- GPU：NVIDIA GeForce RTX 3050 Laptop GPU。
+- 公开年报原报告：`output/r8c/年报分析-20261028-233544.md`。
+- 旧调试文件：`output/r8c/verify-debug.json`；本次重导出：`output/r8c/verify-debug-r9-recheck.json`。
+- 已有代码及回归：6e2afc5、822d64f；原 Windows 审计提交：459061d。
 
-## 决策
+## 五句逐句归因
 
-1. 对笔记本真实 r8c 报告的 5 句【待核实】做逐句归因，分成「证据确实不足（合理）」与「误标（要修）」；误标对应的代码修复已在 6e2afc5/822d64f，本机以单测回归确认。
-2. 不回退 r10 对净利率误绑同比%、资产负债邻页扩展的修复。
-3. README 原生 Windows 实测更新为第 9 轮本机 pytest（187 passed / 11 skipped）。
+原句保留内部词仅用于审计，生成报告正文禁止出现这些词。
 
-## 5 句【待核实】归因表（本机 output/r8c）
+| # | 完整原句 | 引用页 | 抽到的数字与核验 | 分类 | 原因与处理边界 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 检索片段未披露公司主营业务的具体产品名称或服务类别，仅能确认营业收入扣除表中列示“主营业务收入”项目[public-annual-report-2024.pdf p154]；主要产品/服务构成【待核实】。 | p154 | 无数字；未进入数字核验行 | 证据确实不足（合理，限于本章召回片段） | 召回主要是营业收入扣除表，未提供产品构成；不代表整份年报未披露。 |
+| 2 | 检索片段未包含分部报告或分行业、分地区收入明细[public-annual-report-2024.pdf p18]；分部收入结构【待核实】。 | p18 | 无数字；未进入数字核验行；该页证据实际有分行业/分产品/分地区表 | 误标（写作语义） | 原句把检索片段覆盖不足写成未包含明细。既有新报告不再出现该句，但现有核验不判断无数字句语义，不声称该类问题已彻底修复。 |
+| 3 | 写作上下文 calc_financials 给出净利率为5.10%【待核实】（据第13、71页数据计算）[public-annual-report-2024.pdf p13][public-annual-report-2024.pdf p71]。 | p13、p71 | 旧：5.10%、13、71，mismatch；本次：5.10%，supported | 误标（数字核验，已修） | 旧版将多页计算说明中的页码当作数字；现有多页标记解析和重算回归已覆盖。内部词由写作禁令和 assemble 清理，归母口径单独标明。 |
+| 4 | 分行业表中，物联网行业营业收入为521,803,949.48元，营业成本为305,205,137.94元 [public-annual-report-2024.pdf p18]；该片段未完整显示对应毛利率及同比增减数值，毛利率相关结论【待核实】[public-annual-report-2024.pdf p18]。 | p18 | 521,803,949.48元、305,205,137.94元；supported | 误标（写作语义；修正旧日志“合理”的过强分类） | 数字核验仅支持收入和成本。页级证据实际含毛利率41.51%，故不能用表格抽取局限证明“未完整显示”正确；片段切分与写作语义仍有限制。 |
+| 5 | 片段未提供全年经营活动现金流量净额及资产负债率等指标，相关分析【待核实】。 | 句内无引用；前句p8 | 无数字；未进入数字核验行 | 证据确实不足（合理，限于本章片段） | 该段引用分季度现金流，全年现金流与资产负债率证据不完整；不代表整份年报缺失。 |
 
-| # | 章节 | 原句（摘要） | 引用页 | 抽到的数字 / 核验 | 原因 | 分类 | 处理 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 主营业务 | 主要产品/服务构成【待核实】；仅能确认营业收入扣除表「主营业务收入」 | p154 | 无产品名数字；verify-debug 未对该无数字句建 pending 行 | 本章检索多为扣除表，未拿到产品名片段 | **合理** | 保持【待核实】；检索增强见 content-fix |
-| 2 | 主营业务 | 称 p18「未包含」分部/分行业/分地区明细；分部收入结构【待核实】 | p18 | 同页实际有分行业/分产品表（verify 证据预览可见物联网营收行） | 写作者在已引用页上误判「未披露」 | **误标（提示层）** | 写作禁令+公司/财务检索增强已合入；不改抽取器 |
-| 3 | 财务表现 | 「写作上下文 calc_financials 给出净利率为5.10%【待核实】」（据第13、71页） | p13、p71 | claim 5.10%；status=**mismatch**（claim_numbers 还夹了页码 13/71；证据含营收/归母净利润） | 内部工具名进正文 + 计算句被标待核实 | **误标（已修）** | sanitize_internal_terms + 写作禁内部词；归母口径标注；单测覆盖 |
-| 4 | 财务表现 | 物联网业营收/成本已写，毛利率相关结论【待核实】 | p18 | 营收/成本 **supported**；同页可见毛利率但列表头表抽取仍是已知局限 | 写作者自标待核实 | **合理（已知局限）** | 保持；毛利率列表头表抽到 v2 |
-| 5 | 财务表现 | 全年经营现金流净额及资产负债率相关分析【待核实】 | （句内无页码；上文多引分季度 p8） | 缺全年与资产负债率完整证据 | 检索覆盖不足 | **合理** | r10 已扩资产负债邻页；端到端观察见 content-fix |
+## 调试汇总与额外 not_found
 
-补充：erify-debug.json 汇总 sentences=20 / supported=18 / mismatch=1 / not_found=1 / had_pending_mark=2（仅 #3、#4 建成带 pending 标记的核验行；#1/#2/#5 为无数字或未建行的正文自标）。
+旧调试汇总：20句，18 supported / 1 mismatch / 1 not_found；仅2行带待核实标记。
+本次使用现有 export_verify_debug 重导出：20句，19 supported / 0 mismatch / 1 not_found；仍仅2行带待核实标记。
+无数字的待核实句不进入数字调试表；supported 不等于全文语义正确。
 
-## 代码确认（已合入，本提交无再改）
+额外 not_found 原句（原文未带待核实标记）：
+“根据营业收入与净利润数据计算，报告期净利率约为 5.10%（据第 13 页数据计算）。”
+抽到5.10%，计算页13；原因：该句没有标准 `[文件 p页码]` 引用，导出工具未关联到证据，返回 `unable to recalculate 净利率 from evidence`。
+本次不篡改历史报告或假称这一句已验证。
 
-- sanitize_internal_terms：本机抽查「写作上下文 calc_financials 给出净利率为5.10%」→ 去掉内部词。
-- 净利率归母口径、禁止「销售净利率」、assemble 前再扫：见 core/graph/workflow.py + 既有单测。
+## 决策、坑与人工确认
 
-## 坑
+- 用 Python UTF-8 重写本日志，修复旧版断行、丢字和代码围栏转义。
+- 修正旧日志把第4句直接归为合理的结论；数字通过不证明负面披露陈述正确。
+- 原有多页计算标记、净利率合并优先/归母回退、内部词清理均有回归测试；不制造重复功能提交。
+- 人工确认：通读 Word 的事实语义与引用；列表头表、片段覆盖及无数字语义核验仍有限制。
+- Word 打开截图仍由作者拍摄；不打 tag。
 
-- PowerShell 下 git rev-parse @{u} 需写成 '@{u}'，否则被解析成哈希字面量。
-- GitHub HTTPS 偶发连不上时，若 origin/main 对象已在本地，可用 git merge --ff-only origin/main 对齐，稍后再 push。
+## 测试
 
-## 人工确认项
-
-- Word 正文通读（归母口径表述）仍建议作者过一眼。
-- 端到端重跑与截图放在同轮 [content-fix]。
-
-## 测试（Windows 11 / Python 3.12.10）
-
-`	ext
-python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Temp\d2r-pytest-r9-t1
-187 passed, 11 skipped, 0 failed
-`
-
-11 skip = Milvus Lite 原生 Windows 不可用契约测试。
+原459061d记录187 passed / 11 skipped；删去eval测试后的本次补充验收初次复测185 passed / 11 skipped / 1 warning（14.57s）。
+命令：`python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Users\xjsab\AppData\Local\Temp\d2r-r9-verify-20261029-1655`。
+11项跳过均为原生Windows不支持Milvus Lite。最终增量测试和CLI观察见同目录补充验收日志。

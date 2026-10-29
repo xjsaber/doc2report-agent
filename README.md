@@ -140,23 +140,22 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 
 Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）。第 9 轮笔记本已复测：[v1-ready] 185 passed, 11 skipped（Python 3.12.10；已删 eval 相关单测）。
 
-### 端到端实测（仅本机一次运行，非基准）
+### 端到端实测（2026-10-29补充验收，非基准）
 
-- 环境：原生 Windows 11、Python 3.12.10、NVIDIA RTX 3050 Laptop GPU（torch 2.6.0+cu124，嵌入走 CUDA）、`MODEL=deepseek-flash`、`RETRIEVER=memory`。
-- 样本：一份公开年报 PDF（约 4.5 MB）。
-- 命令：`python -m core.graph.run --pdf … --summary-json …`
-- 时间：2026-10-28 23:35（UTC+8）。
+- 原生Windows 11、Python 3.12.10、RTX 3050 Laptop GPU；现有模型配置，CLI使用memory检索器。
+- 原公开年报本次CLI实跑：`python -m core.graph.run --pdf data/samples/public-annual-report-2024.pdf --out-dir output/r9-acceptance --summary-json output/r9-acceptance/run-summary.json`。
+- 解析77.7s，入库145.1s，graph 177.3s，总计400.5s；待核实0处。
+- 本次最终pytest：**185 passed、11 skipped、1 warning**（13.23s）；命令 `python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Users\xjsab\AppData\Local\Temp\d2r-r9-acceptance-final-20261029`。
 
-| 章节 | 核验 | 重写 | 【待核实】句数 | 耗时 (s) |
-| --- | --- | --- | --- | --- |
-| 公司概况 | supported | 0 | 0 | 12.2 |
-| 主营业务 | supported | 1 | 2 | 42.1 |
-| 财务表现 | supported | 1 | 3 | 62.8 |
-| 风险因素 | supported | 0 | 0 | 17.5 |
-| 结论 | supported | 0 | 0 | 16.5 |
+| 章 | 核验状态 | 重写次数 | 待核实数 | 引用页 | 召回页 | 耗时(s) |
+| --- | --- | ---: | ---: | --- | --- | ---: |
+| 公司概况 | supported | 0 | 0 | 6,7,26,88 | 6,7,26,33,87,88 | 27.8 |
+| 主营业务 | supported | 0 | 0 | 23,26,153,154 | 9,23,26,64,153,154 | 21.4 |
+| 财务表现 | supported | 0 | 0 | 7,8,68 | 7,8,67,68,69,92 | 27.3 |
+| 风险因素 | supported | 1 | 0 | 2,30,31,167 | 2,27,30,31,167 | 62.6 |
+| 结论 | supported | 0 | 0 | 9,23,25,29,43 | 9,23,25,29,43 | 19.3 |
 
-各阶段耗时：解析 82.4 s，入库（嵌入）47.6 s，LangGraph 五节点 161.7 s，总计 292.0 s。模型输出有随机性，换机器、换模型或重跑，数字都会变化。
-
+完整原句、公司信息及引用、产物文件名见[补充验收日志](docs/devlog/2026-10-r9-acceptance.md)。截图来自脚本独立运行的真实Streamlit，不是CLI输出截图。正文仍含“待核验”和数据缺失陈述；0处仅统计【待核实】精确标记。数字核验supported不等于完整语义正确，模型输出也可能随重跑变化。
 
 ## 已知局限
 
