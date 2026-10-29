@@ -13,7 +13,6 @@
 - 工具：`calc_financials`（纯代码四类比率）、`verify_claim`、模板加载等（见 `docs/TOOLS_SPEC.md`）
 - 净利率：优先合并净利润；仅能抽到归母时正文写明「归母净利润口径」；assemble 清理内部工具名
 - Streamlit：报告生成页 + 独立 RAG 问答页
-- 最小评估：`scripts/eval.py`（手标期望页 → 检索命中率）
 - 文档：README 快速开始（Windows/Linux）、已知局限、`docs/core-api.md`、开发日志与评审
 
 ### 已知局限
@@ -22,8 +21,8 @@
 - 「分行业/分产品」列表头表营业成本/毛利率抽取不完整（见 README）
 - 括号会计负数不支持；核验对无数字句只查引用不查语义
 - Word 打开截图需作者本机补拍 `docs/images/word-open.png`
-- 未做：MCP 暴露、Docker 一键起、完整评估集、多模板、问答页拆仓（见 ROADMAP v2）
-- 模型输出有随机性；效果数字只以本机 `--summary-json` / `scripts/eval.py` 实测为准
+- 未做：MCP 暴露、Docker 一键起、评估脚本/评估集、多模板、问答页拆仓（见 ROADMAP v2）
+- 模型输出有随机性；效果数字只以本机 `--summary-json` 实测为准（评估脚本已挪到 v2）
 
 ### 不在本草稿内
 

@@ -136,9 +136,9 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 | 环境 | 命令 | 结果 |
 | --- | --- | --- |
 | Linux（Debian 13，Python 3.13.5，第 9 轮 [v1-ready]） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-r9-t3` | 193 passed, 0 skipped, 0 failed |
-| 原生 Windows 11（第 9 轮 [pending-audit]，Python 3.12.10） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Temp\d2r-pytest-r9-t1` | 187 passed, 11 skipped, 0 failed |
+| 原生 Windows 11（第 9 轮 [v1-ready]，Python 3.12.10） | `python -m pytest -q -rs -p no:cacheprovider --basetemp=C:\Temp\d2r-pytest-r9-t3b` | 185 passed, 11 skipped, 0 failed |
 
-Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）。第 9 轮笔记本已复测：187 passed, 11 skipped（Python 3.12.10）。
+Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不可用）。第 9 轮笔记本已复测：[v1-ready] 185 passed, 11 skipped（Python 3.12.10；已删 eval 相关单测）。
 
 ### 端到端实测（仅本机一次运行，非基准）
 
@@ -157,16 +157,6 @@ Windows 上的 11 个 skip 都是 Milvus Lite 契约测试（原生 Windows 不�
 
 各阶段耗时：解析 82.4 s，入库（嵌入）47.6 s，LangGraph 五节点 161.7 s，总计 292.0 s。模型输出有随机性，换机器、换模型或重跑，数字都会变化。
 
-
-## 最小评估（检索命中率）
-
-```bash
-python scripts/eval.py --pdf data/samples/public-annual-report-2024.pdf --out output/eval.json
-```
-
-8 个手标问题（期望页码），hybrid top_k=6，统计期望页是否出现在命中页中。**只记录本机实测值，不编造。**
-
-本机一次运行（第 9 轮，Debian 13 / Python 3.13.5 / `RETRIEVER=memory` / 公开年报样本）：**hit_rate=1.000（8/8）**，耗时约 32.4 s。换机器、换嵌入模型或换样本都会变。
 
 ## 已知局限
 

@@ -25,7 +25,7 @@ un-summary.json（与 Linux box 第 9 轮所用 r8 遗留产物不同）
 | 4 | 财务表现 | 物联网业营收/成本已写，毛利率相关结论【待核实】 | p18 | 营收/成本 **supported**；同页可见毛利率但列表头表抽取仍是已知局限 | 写作者自标待核实 | **合理（已知局限）** | 保持；毛利率列表头表抽到 v2 |
 | 5 | 财务表现 | 全年经营现金流净额及资产负债率相关分析【待核实】 | （句内无页码；上文多引分季度 p8） | 缺全年与资产负债率完整证据 | 检索覆盖不足 | **合理** | r10 已扩资产负债邻页；端到端观察见 content-fix |
 
-补充：erify-debug.json 汇总 sentences=20 / supported=18 / mismatch=1 / not_found=1 / had_pending_mark=2（仅 #3、#4 建成带 pending 标记的核验行；#1/#2/#5 为无数字或未建行的正文自标）。
+补充：erify-debug.json 汇总 sentences=20 / supported=18 / mismatch=1 / not_found=1 / had_pending_mark=2（仅 #3、#4 建成带 pending 标记的核验行；#1/#2/#5 为无数字或未建行的正文自标）。
 
 ## 代码确认（已合入，本提交无再改）
 

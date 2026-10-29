@@ -7,14 +7,14 @@
 - 工具层 8 个工具（见 TOOLS_SPEC），统一返回结构，calc_financials 纯代码计算，verify_claim，MCP 暴露
 - 模型：OpenAI 兼容接口，默认 MODEL=deepseek-flash（非思考模式），可配置
 - Streamlit：报告生成页 + **独立的 RAG 知识库问答页**（上传/选文档 → 混合检索 → 带引用回答，不依赖报告流程，可单独启动演示）
-- python-docx 导出、scripts/eval.py 评估、Docker 一键起、pytest
+- python-docx 导出、Docker 一键起、pytest（评估脚本挪到 v2）
 
 ## v1 交付计划（2026-10-27 作者确认，目标 2026-11-14）
 目标：可作为公开代表作品——公开年报 PDF → 带页码引用的 Word 报告，端到端可跑。
 - 第 3 轮（约 10-30）：页眉页脚去噪；Retriever memory（Windows/测试默认）+ milvus；向量+BM25 RRF；search_chunks；**独立 RAG 问答页**。
 - 第 4 轮（约 11-06）：LangGraph plan → retrieve → write → verify → assemble；calc_financials、verify_claim 等报告所需工具；强制引用。
-- 第 5 轮（约 11-13）：python-docx 导出；Streamlit 报告生成页；README 完整化（安装、用法、架构图、运行截图）；最小评估脚本。
-- v1 范围收缩，挪到 v2：MCP 暴露、Docker 一键启动、完整评估集；报告模板 v1 只做「年报分析」一种。
+- 第 5 轮（约 11-13）：python-docx 导出；Streamlit 报告生成页；README 完整化（安装、用法、架构图、运行截图）。评估脚本挪到 v2。
+- v1 范围收缩，挪到 v2：MCP 暴露、Docker 一键启动、评估脚本/评估集（含原最小 eval）；报告模板 v1 只做「年报分析」一种。
 - 仓库只放截图（docs/images/），v1 阶段不放演示视频或 GIF。
 - v1 完成后，把问答页拆成一个薄的独立小仓库（依赖本库 core），作为第二个可独立演示的作品。
 
@@ -30,12 +30,13 @@
 | calc_financials / verify_claim 等工具、强制引用 | 已完成 | 比率只算四类；净利率优先合并口径，归母时正文写明 |
 | python-docx 导出 | 已完成 | CLI 与报告页都输出 `.docx` |
 | Streamlit 报告生成页 | 已完成 | |
-| README 完整化（安装、用法、架构图、运行截图） | 已完成 | 含最小评估说明；Word 打开图位已预留（作者本机补拍） |
-| 最小评估脚本 `scripts/eval.py` | 已完成 | 8 题手标期望页 + 检索命中率；去掉 NotImplementedError |
+| README 完整化（安装、用法、架构图、运行截图） | 已完成 | Word 打开图位已预留（作者本机补拍）；评估说明已从 README 去掉，改见 v2 |
+| 评估脚本 `scripts/eval.py` | **挪到 v2** | 第 9 轮 Windows 收尾：删除占位/最小版；不进 v1 |
 | 问答页拆成独立小仓库 | 未开始 | 计划在 v1 完成后做 |
 | v1 打 tag | 未打 | 等作者确认（勿由代理打 tag） |
 
 ## v2
+- 评估脚本 / 评估集（原 `scripts/eval.py` 最小命中率评估 + 完整集）
 - Elasticsearch 两级检索（chapters/items，BM25 + kNN + RRF）作为第二个 Retriever 实现
 - FastAPI /tools 内部接口
 - Spring Boot 3 / JDK 21 业务平台：登录角色、模板配置、任务、Word 导出（poi-tl）、审计，MySQL
