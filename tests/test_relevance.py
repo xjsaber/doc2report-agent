@@ -36,7 +36,10 @@ def test_query_instruction_empty_disables(monkeypatch):
     assert apply_query_instruction("营收") == "营收"
 
 
-def test_filter_keeps_bm25_overlap_even_with_low_vector():
+def test_filter_keeps_bm25_overlap_even_with_low_vector(monkeypatch):
+    # Disable BGE query-instruction prefix so the stub can recognize the bare query.
+    monkeypatch.setenv("EMBED_QUERY_INSTRUCTION", "")
+
     def embed(texts):
         # Query vector is axis-0; document vectors are axis-1 → cosine 0, BM25 must save the hit.
         return np.asarray(

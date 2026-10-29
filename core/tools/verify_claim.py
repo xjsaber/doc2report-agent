@@ -251,26 +251,49 @@ def _extract_labeled_amount(text: str, labels: Sequence[str]) -> Decimal | None:
     return found[1][0][0]
 
 
-def _extract_claimed_ratio(text: str) -> tuple[str | None, ParsedNumber | None]:
-    """Detect YoY / gross-margin style claims and the percentage token."""
-    cleaned = strip_claim_noise(text, keep_calc_mark=False)
-    kind: str | None = None
-    if re.search(r"毛利率", cleaned):
-        kind = "毛利率"
-    elif re.search(r"同比|增速", cleaned):
-        kind = "同比"
-    elif re.search(r"净利率", cleaned):
-        kind = "净利率"
-    elif re.search(r"资产负债率", cleaned):
-        kind = "资产负债率"
-    if kind is None:
-        return None, None
-    # Prefer an explicit percent token.
-    for match in _NUMBER_TOKEN_RE.finditer(cleaned):
+# Ratio kinds: specific margins/ratios before generic 同比/增速, so a sentence that
+# also mentions 「下降 0.95%」 is not classified as 同比 when it is really about 净利率.
+_RATIO_KIND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("毛利率", re.compile(r"毛利率")),
+    ("净利率", re.compile(r"净利率")),
+    ("资产负债率", re.compile(r"资产负债率")),
+    ("同比", re.compile(r"同比|增速")),
+)
+
+# How far (chars) a percent may sit from its keyword (「净利率为 5.10%」 / 「5.10% 的净利率」).
+_RATIO_PERCENT_WINDOW = 48
+
+
+def _percent_near_span(text: str, start: int, end: int, *, window: int = _RATIO_PERCENT_WINDOW) -> ParsedNumber | None:
+    """Bind the percent closest to a keyword; prefer tokens after the keyword."""
+    after = text[end : end + window]
+    for match in _NUMBER_TOKEN_RE.finditer(after):
         parsed = parse_number_token(match)
         if parsed.is_percent:
-            return kind, parsed
-    return kind, None
+            return parsed
+    before = text[max(0, start - window) : start]
+    last: ParsedNumber | None = None
+    for match in _NUMBER_TOKEN_RE.finditer(before):
+        parsed = parse_number_token(match)
+        if parsed.is_percent:
+            last = parsed
+    return last
+
+
+def _extract_claimed_ratio(text: str) -> tuple[str | None, ParsedNumber | None]:
+    """Detect YoY / margin style claims and the percentage token bound to that keyword.
+
+    r10: do not take the first percent in the whole sentence. A clause like
+    「净利润…下降 0.95%；净利率为 5.10%」 must bind 5.10% to 净利率, not 0.95%.
+    """
+    cleaned = strip_claim_noise(text, keep_calc_mark=False)
+    for kind, pattern in _RATIO_KIND_PATTERNS:
+        match = pattern.search(cleaned)
+        if not match:
+            continue
+        claimed = _percent_near_span(cleaned, match.start(), match.end())
+        return kind, claimed
+    return None, None
 
 
 def _yoy_metric(claim: str) -> str:

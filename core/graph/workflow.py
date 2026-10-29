@@ -94,6 +94,72 @@ def _format_retrieve_query(section: SectionState) -> str:
     return " ".join(parts)
 
 
+def _merge_search_hits(*groups: Sequence) -> list:
+    """Deduplicate SearchHit-like objects by chunk_id; earlier groups win order."""
+    seen: set[str] = set()
+    out: list = []
+    for group in groups:
+        for hit in group or []:
+            data = hit if isinstance(hit, dict) else hit.model_dump()
+            cid = str(data.get("chunk_id") or "")
+            if not cid or cid in seen:
+                continue
+            seen.add(cid)
+            out.append(hit)
+    return out
+
+
+
+_BS_METRIC_TOKENS = ("资产总计", "负债合计", "合并资产负债表")
+
+
+def _hit_data(hit) -> dict:
+    return hit if isinstance(hit, dict) else hit.model_dump()
+
+
+def _expand_balance_sheet_neighbor_chunks(
+    hits: Sequence,
+    *,
+    retriever,
+    doc_ids: Sequence[str] | None,
+    page_span: int = 2,
+) -> list:
+    """When 合并资产负债表 is recalled, pull same-doc chunks on nearby pages with 资产总计/负债合计.
+
+    Statement tables often start on the titled page and put totals one–two pages later;
+    hybrid search rarely ranks those total lines. Uses ``retriever._chunks`` when present
+    (MemoryRetriever); otherwise a no-op.
+    """
+    stored = getattr(retriever, "_chunks", None)
+    if not isinstance(stored, dict) or not stored:
+        return list(hits)
+    anchors: list[int] = []
+    for hit in hits:
+        data = _hit_data(hit)
+        blob = f"{data.get('section') or ''}\n{data.get('text') or ''}"
+        if "合并资产负债表" in blob:
+            try:
+                anchors.append(int(data.get("page") or 0))
+            except (TypeError, ValueError):
+                continue
+    if not anchors:
+        return list(hits)
+    target_pages = {p + d for p in anchors if p > 0 for d in range(0, page_span + 1)}
+    allowed = None if doc_ids is None else set(doc_ids)
+    extras: list = []
+    for chunk in stored.values():
+        if allowed is not None and chunk.doc_id not in allowed:
+            continue
+        if int(getattr(chunk, "page", 0) or 0) not in target_pages:
+            continue
+        text = getattr(chunk, "text", "") or ""
+        if not any(tok in text for tok in ("资产总计", "负债合计")):
+            continue
+        extras.append(SearchHit(**chunk.model_dump(), score=1.0))
+    if not extras:
+        return list(hits)
+    return _merge_search_hits(extras, hits)
+
 
 def _try_build_calc_context(section: SectionState) -> str:
     """Best-effort: extract key rows from retrieved chunks and run calc_financials for write context.
@@ -300,6 +366,17 @@ def build_report_graph(
                     return True
             return False
 
+        def _metric_text_match(hit_text: str | None, hints: list[str]) -> bool:
+            """Prefer chunks whose body carries statement totals named in hints."""
+            text = hit_text or ""
+            if not text or not hints:
+                return False
+            hint_set = {h.strip() for h in hints if (h or "").strip()}
+            for tok in _BS_METRIC_TOKENS:
+                if tok in hint_set and tok in text:
+                    return True
+            return False
+
         def _prefer_hinted(hits: list, hints: list[str], limit: int) -> list:
             if not hints:
                 return list(hits)[:limit]
@@ -307,7 +384,9 @@ def build_report_graph(
             rest = []
             for hit in hits:
                 data = hit if isinstance(hit, dict) else hit.model_dump()
-                if _section_match(data.get("section"), hints):
+                if _section_match(data.get("section"), hints) or _metric_text_match(
+                    data.get("text"), hints
+                ):
                     preferred.append(hit)
                 else:
                     rest.append(hit)
@@ -338,7 +417,25 @@ def build_report_graph(
                 errors.append(f"retrieve:{section['name']}:{tool.error}")
                 section["chunks"] = []
                 continue
-            raw_hits = tool.data.chunks if tool.data else []
+            raw_hits = list(tool.data.chunks if tool.data else [])
+            # Supplemental pass: section_hints alone often recall TOC-titled pages
+            # (e.g. 合并资产负债表) that the long question+keyword query buries.
+            hint_query = " ".join(h for h in hints if (h or "").strip())
+            if hint_query:
+                hint_tool = search_chunks(
+                    SearchChunksInput(
+                        query=hint_query, doc_ids=doc_ids, top_k=fetch_k, mode="hybrid"
+                    ),
+                    retriever=retriever,
+                )
+                if hint_tool.ok and hint_tool.data:
+                    raw_hits = _merge_search_hits(hint_tool.data.chunks, raw_hits)
+                elif not hint_tool.ok:
+                    errors.append(f"retrieve-hints:{section['name']}:{hint_tool.error}")
+            # Balance-sheet title page → also keep total lines on the next pages.
+            raw_hits = _expand_balance_sheet_neighbor_chunks(
+                raw_hits, retriever=retriever, doc_ids=doc_ids
+            )
             if section_needs_audit_filter(str(section.get("name") or "")):
                 # Auditor's-report standard wording is not a company risk / conclusion.
                 raw_hits = demote_audit_boilerplate(raw_hits)

@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 from core.tools.verify_claim import (
+    _extract_claimed_ratio,
     ParsedNumber,
     VerifyClaimInput,
     extract_numbers,
@@ -139,3 +140,36 @@ def test_extract_numbers_ignores_list_index():
     text = "1. 实物销售收入是否大于劳务收入的选择为「是」"
     # After stripping list marker, remaining text has no digits.
     assert extract_numbers(text) == []
+
+
+def test_net_margin_ignores_prior_yoy_decline_percent():
+    """r10: 「下降 0.95%」 must not be bound as the 净利率 claim when 5.10% follows."""
+    claim = (
+        "归属于母公司所有者的净利润为 2,784.78 万元，较上年同期下降 0.95% [a.pdf p13]；"
+        "按归母净利润口径计算的净利率为 5.10%（据第 13、71 页数据计算）[a.pdf p13][a.pdf p71]。"
+    )
+    kind, claimed = _extract_claimed_ratio(claim)
+    assert kind == "净利率"
+    assert claimed is not None and claimed.raw == "5.10%"
+    evidence = [
+        "营业总收入（元）\n545,680,493.10\n601,286,596.33\n"
+        "归属于母公司所有者的净利润（元）\n27,847,800.00\n28,114,000.00"
+    ]
+    # Pre-fix behaviour was mismatch (0.95 vs 5.10); post-fix must be supported.
+    status, diff = verify_calculated_sentence(claim, evidence)
+    assert status == "supported", diff
+    lookup = {"c1": evidence[0], "c2": evidence[0]}
+    out = verify_claim(
+        VerifyClaimInput(claim=claim, source_chunk_ids=["c1", "c2"]),
+        chunk_lookup=lookup,
+    )
+    assert out.ok and out.data.status == "supported", out.data.difference if out.data else out.error
+
+
+def test_yoy_percent_still_binds_when_no_net_margin_keyword():
+    kind, claimed = _extract_claimed_ratio(
+        "营业收入同比增速为 -9.25%（据第 71 页数据计算）[a.pdf p71]"
+    )
+    assert kind == "同比"
+    assert claimed is not None and "-9.25%" in claimed.raw
+
