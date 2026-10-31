@@ -1,0 +1,127 @@
+{
+  "env": {
+    "python": "3.12.10",
+    "platform": "win32",
+    "torch": "2.6.0+cu124",
+    "cuda_available": true,
+    "cuda_device": "NVIDIA GeForce RTX 3050 Laptop GPU",
+    "embed_device_env": "cuda",
+    "model": "deepseek-flash",
+    "embedding_backend": "local"
+  },
+  "index": {
+    "pages": 185,
+    "chunks": 2066,
+    "chunks_per_page": 11.17,
+    "embed_device_used": "cuda",
+    "index_seconds": 154.6
+  },
+  "report": {
+    "graph_seconds": 276.0,
+    "total_seconds": 527.4,
+    "title": "年报分析",
+    "errors": [],
+    "sections": [
+      {
+        "name": "公司概况",
+        "has_citation": true,
+        "pending": true,
+        "verification_status": "mismatch",
+        "rewrite_count": 1,
+        "chunks": 6
+      },
+      {
+        "name": "主营业务",
+        "has_citation": true,
+        "pending": true,
+        "verification_status": "mismatch",
+        "rewrite_count": 1,
+        "chunks": 6
+      },
+      {
+        "name": "财务表现",
+        "has_citation": true,
+        "pending": true,
+        "verification_status": "mismatch",
+        "rewrite_count": 1,
+        "chunks": 6
+      },
+      {
+        "name": "风险因素",
+        "has_citation": true,
+        "pending": true,
+        "verification_status": "mismatch",
+        "rewrite_count": 1,
+        "chunks": 6
+      },
+      {
+        "name": "结论",
+        "has_citation": true,
+        "pending": true,
+        "verification_status": "mismatch",
+        "rewrite_count": 1,
+        "chunks": 6
+      }
+    ],
+    "pending_chapters": [
+      "公司概况",
+      "主营业务",
+      "财务表现",
+      "风险因素",
+      "结论"
+    ]
+  },
+  "citation_spotcheck": [
+    {
+      "file": "public-annual-report-2024.pdf",
+      "page": 88,
+      "page_in_index": true,
+      "sample_chars": "三、公司基本情况"
+    },
+    {
+      "file": "public-annual-report-2024.pdf",
+      "page": 28,
+      "page_in_index": true,
+      "sample_chars": "（二）公司战略定位和经营计划"
+    },
+    {
+      "file": "public-annual-report-2024.pdf",
+      "page": 9,
+      "page_in_index": true,
+      "sample_chars": "第三节 管理层讨论与分析"
+    }
+  ],
+  "qa": [
+    {
+      "question": "公司主营业务是什么？",
+      "expect_refuse": false,
+      "refused": false,
+      "retrieval_only": false,
+      "has_answer": true,
+      "citation_count": 6,
+      "message_head": "",
+      "answer_head": "公司主营业务是提供以 RFID 技术为核心的物联网行业应用产品和解决方案，主要产品包括地面装置、标签读写器、电子标签、备品备件、软件等；公司所属行业为软件和信息技术服务业下的物联网技术服务。[public-annual-report-202"
+    },
+    {
+      "question": "报告期内营业收入大概是多少？",
+      "expect_refuse": false,
+      "refused": false,
+      "retrieval_only": false,
+      "has_answer": true,
+      "citation_count": 6,
+      "message_head": "",
+      "answer_head": "报告期内公司实现营业总收入 **54,568.05 万元（约 5.46 亿元）**，对应营业收入 **545,680,493.10 元** [public-annual-report-2024.pdf p13] [public-annual"
+    },
+    {
+      "question": "火星移民计划的预算编制依据是什么？",
+      "expect_refuse": true,
+      "refused": true,
+      "retrieval_only": false,
+      "has_answer": false,
+      "citation_count": 6,
+      "message_head": "资料中未找到依据",
+      "answer_head": ""
+    }
+  ],
+  "errors": []
+}
