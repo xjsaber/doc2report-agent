@@ -54,7 +54,7 @@ class ToolMetadata(BaseModel):
     name: str
     description_zh: str
     description_en: str
-    version: str = "0.1.0"
+    version: str = "1.0.0"
 
 
 class Fact(BaseModel):

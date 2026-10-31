@@ -14,9 +14,9 @@
 
 ![报告预览](docs/images/report-preview.png)
 
-<!-- Word 打开图由作者本机拍摄后放入 docs/images/word-open.png，再取消下一行注释：
+生成自 output/v1-final 的最终 docx，运行代码提交 4a2562f。
+
 ![Word 打开效果](docs/images/word-open.png)
--->
 
 ### 独立问答
 
@@ -133,14 +133,14 @@ python -m pytest -q -rs -p no:cacheprovider --basetemp=/tmp/d2r-pytest-<新目�
 
 ## 测试结果
 
-当前候选代码的验证结果（第 10 轮最终提交；报告运行代码与 `4a2562f` 相同）：
+v1.0.0 发布提交的验证结果（报告运行代码与 `4a2562f` 相同）：
 
 | 环境 | 当前结果 | 说明 |
 | --- | --- | --- |
-| Windows 11 / Python 3.12.10 | 186 passed / 11 skipped | 11 项 Milvus Lite 契约测试在原生 Windows 跳过；另有 1 项依赖弃用预告 |
+| Windows 11 / Python 3.11.5（.venv） | 187 passed / 11 skipped | 11 项 Milvus Lite 契约测试在原生 Windows 跳过；另有 1 项依赖弃用预告 |
 | Linux（全跑，含 Milvus Lite） | 以评审复现为准 | 本机没有可用 Linux 环境；[评审目录](docs/reviews/)保留复现记录，旧提交数字不代表当前 HEAD |
 
-Windows 命令：`python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-r10`。
+Windows 命令：`python -m pytest -q -rs -p no:cacheprovider --basetemp=$env:LOCALAPPDATA\Temp\d2r-pytest-release`。
 
 ### 端到端实测（第 10 轮，非基准、重跑会变）
 
@@ -170,7 +170,7 @@ Windows 11、Python 3.12.10、RTX 3050 Laptop GPU；运行代码提交 `4a2562f`
 - 写作模型偶尔仍可能把内部词写进正文；assemble 会清理 `calc_financials` /「写作上下文」，仍建议人工通读。
 - 模板 v1 只有「年报分析」一种。
 - 本地 embedding **不会**在运行时静默联网：缺模型时请显式执行 `python -m core.index.embeddings --download-model`，或给 CLI 加 `--download-model`，或设置 `EMBEDDING_ALLOW_DOWNLOAD=1`。模型权重不入库。
-- Word 打开图：`docs/images/word-open.png` 由作者本机拍摄后提交；文件不存在时 README 中对应图片行保持注释。也可直接打开 `output/` 里的 `.docx`（不入库）。
+- Word 打开图：`docs/images/word-open.png` 为示意截图（非本机真实 Word 实拍），展示生成自 `output/v1-final` 最终 docx（运行代码提交 `4a2562f`）打开后的标题层级与 `[文件名 pN]` 引用形态；也可直接打开 `output/` 里的 `.docx`（不入库）。
 - 不提交 PDF、`.env`、密钥、模型文件、`output/` 与生成的报告。
 - 核心函数入口与签名见 [docs/core-api.md](docs/core-api.md)。
 

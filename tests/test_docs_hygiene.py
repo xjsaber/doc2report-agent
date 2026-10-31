@@ -32,3 +32,15 @@ def test_readme_and_docs_have_no_windows_user_paths():
             if forbidden.search(line):
                 offenders.append(f"{path.relative_to(root)}:{line_no}")
     assert not offenders, "absolute user paths in Markdown: " + ", ".join(offenders)
+
+
+def test_readme_referenced_docs_images_exist():
+    readme = (DOCS.parent / "README.md").read_text(encoding="utf-8")
+    missing = []
+    for match in re.finditer(r"\((docs/images/[^)\s]+\.png)\)", readme):
+        rel = match.group(1)
+        path = DOCS.parent / rel
+        if not path.is_file():
+            missing.append(rel)
+    assert not missing, "README references missing images: " + ", ".join(missing)
+
