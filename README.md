@@ -14,9 +14,9 @@
 
 ![报告预览](docs/images/report-preview.png)
 
-生成自 output/v1-final 的最终 docx，运行代码提交 4a2562f。
+> 下图为 **AI 生成的示意图**，不是真实运行截图；图中正文文字只示意版式（标题层级与 `[文件名 pN]` 引用形态），**不代表报告实际内容**。真实报告请运行后打开 `output/` 下的 `.docx`。
 
-![Word 打开效果](docs/images/word-open.png)
+![Word 打开效果（示意图）](docs/images/word-open.png)
 
 ### 独立问答
 
@@ -170,7 +170,7 @@ Windows 11、Python 3.12.10、RTX 3050 Laptop GPU；运行代码提交 `4a2562f`
 - 写作模型偶尔仍可能把内部词写进正文；assemble 会清理 `calc_financials` /「写作上下文」，仍建议人工通读。
 - 模板 v1 只有「年报分析」一种。
 - 本地 embedding **不会**在运行时静默联网：缺模型时请显式执行 `python -m core.index.embeddings --download-model`，或给 CLI 加 `--download-model`，或设置 `EMBEDDING_ALLOW_DOWNLOAD=1`。模型权重不入库。
-- Word 打开图：`docs/images/word-open.png` 为示意截图（非本机真实 Word 实拍），展示生成自 `output/v1-final` 最终 docx（运行代码提交 `4a2562f`）打开后的标题层级与 `[文件名 pN]` 引用形态；也可直接打开 `output/` 里的 `.docx`（不入库）。
+- Word 打开图：`docs/images/word-open.png` 为 AI 生成的示意图（非真实 Word 截图，图中正文不是报告实际内容），只示意标题层级与 `[文件名 pN]` 引用形态；后续以真实 Word 截图替换；也可直接打开 `output/` 里的 `.docx`（不入库）。
 - 不提交 PDF、`.env`、密钥、模型文件、`output/` 与生成的报告。
 - 核心函数入口与签名见 [docs/core-api.md](docs/core-api.md)。
 
